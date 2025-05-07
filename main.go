@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"golang.org/x/term"
@@ -33,28 +34,27 @@ func main() {
 		}
 	case "ls":
 		// list all the notes
+		log.Println("not implemented")
 		return
 	case "rm":
-		if len(os.Args) < 3 {
-			fmt.Println("Please provide a note to remove.")
-			return
-		}
-		// remove the note
+		log.Println("not implemented")
 		return
 	case "edit":
-		if len(os.Args) < 3 {
-			fmt.Println("Please provide a note to edit.")
-			return
-		}
-		// open the note in $EDITOR
+		log.Println("not implemented")
 		return
 	case "less":
-		if len(os.Args) < 3 {
-			fmt.Println("Please provide a note to view.")
-			return
-		}
-		// view the note in less
+		log.Println("not implemented")
 		return
+	case "cat":
+		log.Println("not implemented")
+		return
+	case "publish":
+		// view the note in cat
+		return
+	case "review":
+		// view the note in cat
+		return
+	default:
+		fmt.Println("Unknown command:", cmd)
 	}
-
 }
