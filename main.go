@@ -14,7 +14,18 @@ var (
 	isTTY = term.IsTerminal(int(os.Stdout.Fd()))
 )
 
-func getInitLuaPath() string {
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		panic(err)
+	}
+	return true
+}
+
+func configHome() string {
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {
 		home, err := os.UserHomeDir()
@@ -23,10 +34,37 @@ func getInitLuaPath() string {
 		}
 		configHome = filepath.Join(home, ".config")
 	}
+	return configHome
+}
+
+func getInitLuaPath() string {
+	configHome := configHome()
 	return filepath.Join(configHome, "jnl", "init.lua")
 }
 
+// createConfigDir creates the config directory if it does not exist.
+func createConfigDir() {
+	configHome := configHome()
+	configDir := filepath.Join(configHome, "jnl")
+	_, err := os.Stat(configDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(configDir, 0700)
+			if err != nil {
+				log.Fatal("Failed to create config directory:", err)
+			}
+			return
+		}
+		log.Fatal("Failed to check config directory:", err)
+	}
+}
+
 func runLuaFile(name string) {
+	if !fileExists(name) {
+		// TODO: load defaults
+		return
+	}
+
 	// Create a new Lua state.
 	L := lua.New()
 	defer L.Close()
@@ -43,48 +81,34 @@ func runLuaFile(name string) {
 	}
 }
 
-func fileExists(name string) bool {
-	_, err := os.Stat(name)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-		panic(err)
-	}
-	return true
-}
-
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
+	createConfigDir()
+	initFile := getInitLuaPath()
+
+	cmd := "add"
 	// check first parameter
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a command to run.")
+	if len(os.Args) > 2 {
+		cmd = os.Args[1]
 		return
 	}
 
-	cmd := os.Args[1]
-
-	initFile := getInitLuaPath()
-	if fileExists(initFile) {
-		runLuaFile(initFile)
-	} else {
-		// load local config
+	if fileExists("./jnl_init.lua") {
 		initFile = "./jnl_init.lua"
-		runLuaFile(initFile)
 	}
+
+	runLuaFile(initFile)
 
 	switch cmd {
 	case "add":
-		if len(os.Args) < 3 {
-			if isTTY {
-				// open $EDITOR with a temporary file and use the file as the content
-				return
-			}
-
-			// load the content from stdin using readAll and it as the content
+		if isTTY {
+			// open $EDITOR with a temporary file and use the file as the content
 			return
 		}
+
+		// load the content from stdin using readAll and it as the content
+		return
 	case "ls":
 		// list all the notes
 		log.Println("not implemented")
