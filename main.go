@@ -144,9 +144,8 @@ func main() {
 
 	cmd := "add"
 	// check first parameter
-	if len(os.Args) > 2 {
+	if len(os.Args) > 1 {
 		cmd = os.Args[1]
-		return
 	}
 
 	if fileExists("./jnl_init.lua") {
@@ -232,7 +231,7 @@ func main() {
 		log.Println("not implemented")
 		return
 	case "version":
-		log.Printf("jornal %s\n", GitTag)
+		fmt.Printf("jornal %s\n", GitTag)
 		return
 	case "config":
 		log.Println("not implemented")
