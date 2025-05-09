@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	GitTag     = "v0.0.0"
 	isTTY      = term.IsTerminal(int(os.Stdout.Fd()))
 	jornalPath string
 )
@@ -231,7 +232,7 @@ func main() {
 		log.Println("not implemented")
 		return
 	case "version":
-		log.Println("not implemented")
+		log.Printf("jornal %s\n", GitTag)
 		return
 	case "config":
 		log.Println("not implemented")
