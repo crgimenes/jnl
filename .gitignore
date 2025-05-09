@@ -24,3 +24,12 @@ go.work.sum
 # env file
 .env
 jnl
+*.lua
+draft
+.DS_Store
+.vscode
+todo.md
+release.sh
+dist
+*.sql
+
