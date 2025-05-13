@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	GitTag     = "v0.0.0"
-	isTTY      = term.IsTerminal(int(os.Stdout.Fd()))
-	jornalPath string
+	GitTag      = "v0.0.0"
+	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
+	journalPath string
 )
 
 func fileExists(name string) bool {
@@ -101,7 +101,7 @@ func journalFilename(content []byte) string {
 	slug := simpleSlugify(firstLine)
 
 	// current timestamp
-	ts := time.Now().Format("20060102T150405")
+	ts := time.Now().Format("2006-01-02T15-04-05")
 
 	if slug == "" {
 		return ts + ".md"
@@ -110,7 +110,7 @@ func journalFilename(content []byte) string {
 }
 
 func runLuaFile(name string) {
-	jornalPath = "./" // TODO: get better default path
+	journalPath = "./"
 
 	if !fileExists(name) {
 		return
@@ -120,7 +120,7 @@ func runLuaFile(name string) {
 	L := lua.New()
 	defer L.Close()
 
-	L.SetGlobal("jornal_path", jornalPath)
+	L.SetGlobal("JournalPath", journalPath)
 
 	// Read the Lua file.
 	b, err := os.ReadFile(filepath.Clean(name))
@@ -133,7 +133,21 @@ func runLuaFile(name string) {
 		log.Fatal(err)
 	}
 
-	jornalPath = L.MustGetString("jornal_path")
+	journalPath = L.MustGetString("JournalPath")
+
+	// resolve ~/ to full path
+	if strings.HasPrefix(journalPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal("Failed to get home directory:", err)
+		}
+		journalPath = strings.Replace(journalPath, "~", home, 1)
+	}
+
+	journalPath, err = filepath.Abs(journalPath)
+	if err != nil {
+		log.Fatal("Failed to get absolute path:", err)
+	}
 }
 
 func main() {
@@ -191,8 +205,7 @@ func main() {
 			}
 
 			// save the content to the journal path
-			journalFile := filepath.Join(jornalPath, journalFilename(content))
-			log.Println("Saving journal entry to:", journalFile)
+			journalFile := filepath.Join(journalPath, journalFilename(content))
 
 			err = os.WriteFile(journalFile, content, 0600)
 			if err != nil {
@@ -231,7 +244,7 @@ func main() {
 		log.Println("not implemented")
 		return
 	case "version":
-		fmt.Printf("jornal %s\n", GitTag)
+		fmt.Printf("journal %s\n", GitTag)
 		return
 	case "config":
 		log.Println("not implemented")
