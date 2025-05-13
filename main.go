@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -150,6 +151,63 @@ func runLuaFile(name string) {
 	}
 }
 
+func listJournalEntries(pattern string, showFullPath bool) error {
+	// Ensure journal directory exists
+	if _, err := os.Stat(journalPath); os.IsNotExist(err) {
+		return fmt.Errorf("journal directory does not exist: %s", journalPath)
+	}
+
+	// Read all files from the journal directory
+	files, err := os.ReadDir(journalPath)
+	if err != nil {
+		return fmt.Errorf("failed to read journal directory: %v", err)
+	}
+
+	// Filter and sort the files
+	var matchedFiles []string
+	for _, file := range files {
+		// Skip directories and non-markdown files
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
+			continue
+		}
+
+		// Apply pattern filter if provided
+		if pattern != "" {
+			matched, err := filepath.Match(pattern, file.Name())
+			if err != nil {
+				// If the pattern is invalid, try as substring
+				if strings.Contains(file.Name(), pattern) {
+					matchedFiles = append(matchedFiles, file.Name())
+				}
+				continue
+			}
+			if matched {
+				matchedFiles = append(matchedFiles, file.Name())
+			}
+			continue
+		}
+		matchedFiles = append(matchedFiles, file.Name())
+	}
+
+	// Sort files alphabetically
+	sort.Strings(matchedFiles)
+
+	if len(matchedFiles) == 0 {
+		fmt.Println("Nenhuma entrada no diário encontrada.")
+		return nil
+	}
+
+	for _, fileName := range matchedFiles {
+		if showFullPath {
+			fmt.Println(filepath.Join(journalPath, fileName))
+			continue
+		}
+		fmt.Println(fileName)
+	}
+
+	return nil
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -219,8 +277,27 @@ func main() {
 		// load the content from stdin using readAll and it as the content
 		return
 	case "ls":
-		// list all the notes
-		log.Println("not implemented")
+		// List journal entries, optionally filtered by pattern
+		var pattern string
+		var showFullPath bool
+
+		// Parse arguments
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--full-path" || arg == "-f" {
+				showFullPath = true
+				continue
+			}
+			// First non-flag argument is the pattern
+			if pattern == "" && !strings.HasPrefix(arg, "-") {
+				pattern = arg
+			}
+		}
+
+		err := listJournalEntries(pattern, showFullPath)
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	case "rm":
 		log.Println("not implemented")
