@@ -13,7 +13,7 @@ RG_PREFIX="rg \
     --line-number \
     --no-heading \
     --smart-case \
-    --sort=modified"
+    --sortr=modified"
 INITIAL_QUERY="${*:-}"
 IFS=: read -ra selected < <(
     FZF_DEFAULT_COMMAND="$RG_PREFIX $(printf %q "$INITIAL_QUERY")" \
@@ -23,6 +23,7 @@ IFS=: read -ra selected < <(
         --disabled \
         --preview 'bat --color=always {1} --highlight-line {2}' \
         --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+        --layout=reverse-list \
         --query "$INITIAL_QUERY"
 )
 [ -n "${selected[0]}" ] && \
