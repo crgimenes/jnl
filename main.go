@@ -193,7 +193,7 @@ func listJournalEntries(pattern string, showFullPath bool) error {
 	sort.Strings(matchedFiles)
 
 	if len(matchedFiles) == 0 {
-		fmt.Println("Nenhuma entrada no diário encontrada.")
+		fmt.Println("No journal entries found.")
 		return nil
 	}
 

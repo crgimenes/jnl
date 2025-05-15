@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+JOURNAL_DIR="${JOURNAL_DIR:-$(pwd)}"
+
+cd "$JOURNAL_DIR" || exit 1
+
+RG_PREFIX="rg \
+    --color=always \
+    --column \
+    --follow \
+    --glob '!{.git,node_modules}/*' \
+    --hidden \
+    --line-number \
+    --no-heading \
+    --smart-case \
+    --sort=modified"
+INITIAL_QUERY="${*:-}"
+IFS=: read -ra selected < <(
+    FZF_DEFAULT_COMMAND="$RG_PREFIX $(printf %q "$INITIAL_QUERY")" \
+    fzf --ansi \
+        --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
+        --delimiter : \
+        --disabled \
+        --preview 'bat --color=always {1} --highlight-line {2}' \
+        --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+        --query "$INITIAL_QUERY"
+)
+[ -n "${selected[0]}" ] && \
+    $EDITOR "${selected[0]}" "+${selected[1]}" && \
+    echo "${selected[0]}" "+${selected[1]}"
