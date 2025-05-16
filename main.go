@@ -241,6 +241,38 @@ func main() {
 			defer tmpFile.Close()
 			defer os.Remove(tmpFile.Name())
 
+			// write the content to the temporary file
+			date := time.Now().Format("2006-01-02 15:04:05")
+			_, err = tmpFile.WriteString(fmt.Sprintf("# %s\n", date))
+			if err != nil {
+				log.Fatal("Failed to write to temporary file:", err)
+			}
+
+			// get last name from current directory
+			wd, err := os.Getwd()
+			if err != nil {
+				log.Fatal("Failed to get current directory:", err)
+			}
+			wd = filepath.Base(wd)
+
+			// get git branch name
+			gitBranch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+			if err != nil {
+				log.Fatal("Failed to get git branch name:", err)
+			}
+			gitBranch = bytes.TrimSpace(gitBranch)
+
+			tagArray := []string{
+				wd,
+				string(gitBranch),
+			}
+			tags := strings.Join(tagArray, ", ")
+			// write the tags to the temporary file
+			_, err = tmpFile.WriteString(fmt.Sprintf("# tags: %s\n\n", tags))
+			if err != nil {
+				log.Fatal("Failed to write to temporary file:", err)
+			}
+
 			// open the file with the editor using exec.Command
 			cmd := exec.Command(editor, tmpFile.Name())
 			cmd.Stdin = os.Stdin
