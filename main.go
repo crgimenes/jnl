@@ -208,6 +208,16 @@ func listJournalEntries(pattern string, showFullPath bool) error {
 	return nil
 }
 
+func getGitBranch() (string, bool) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		// ignore errors if not in a git repository
+		return "", false
+	}
+	return string(bytes.TrimSpace(out)), true
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -254,23 +264,27 @@ func main() {
 				log.Fatal("Failed to get current directory:", err)
 			}
 			wd = filepath.Base(wd)
-
-			// get git branch name
-			gitBranch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
-			if err != nil {
-				log.Fatal("Failed to get git branch name:", err)
-			}
-			gitBranch = bytes.TrimSpace(gitBranch)
-
 			tagArray := []string{
 				wd,
-				string(gitBranch),
 			}
+
+			// get git branch name
+			gitBranch, ok := getGitBranch()
+			if ok {
+				tagArray = append(tagArray, gitBranch)
+			}
+
 			tags := strings.Join(tagArray, ", ")
 			// write the tags to the temporary file
 			_, err = tmpFile.WriteString(fmt.Sprintf("# tags: %s\n\n", tags))
 			if err != nil {
 				log.Fatal("Failed to write to temporary file:", err)
+			}
+
+			// read the file
+			prevContent, err := os.ReadFile(tmpFile.Name())
+			if err != nil {
+				log.Fatal("Failed to read temporary file:", err)
 			}
 
 			// open the file with the editor using exec.Command
@@ -289,7 +303,7 @@ func main() {
 				log.Fatal("Failed to read temporary file:", err)
 			}
 
-			if len(content) == 0 {
+			if len(content) == 0 || bytes.Equal(content, prevContent) {
 				// enpty file, do not save
 				return
 			}
