@@ -258,6 +258,7 @@ func listJournalEntries(pattern string, showFullPath bool) error {
 
 func getGitBranch() (string, bool) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
 		// ignore errors if not in a git repository
@@ -353,6 +354,7 @@ func main() {
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
+			cmd.Env = os.Environ()
 			err = cmd.Run()
 			if err != nil {
 				log.Fatal("Failed to run editor:", err)
