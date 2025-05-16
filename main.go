@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/crgimenes/jnl/lua"
+	glua "github.com/yuin/gopher-lua"
 	"golang.org/x/term"
 )
 
@@ -20,7 +21,58 @@ var (
 	GitTag      = "v0.0.0"
 	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
 	journalPath string
+
+	// Create a new Lua state.
+	L = lua.New()
 )
+
+func preProc(text string) string {
+	ls := L.GetState()
+	fn := ls.GetGlobal("PreProc")
+	if _, ok := fn.(*glua.LFunction); !ok {
+		return text
+	}
+	err := ls.CallByParam(glua.P{
+		Fn:      fn,
+		NRet:    1,
+		Protect: true,
+	}, glua.LString(text))
+	if err != nil {
+		return text
+	}
+
+	ret := ls.Get(-1)
+	ls.Pop(1)
+	s, ok := ret.(glua.LString)
+	if ok {
+		return string(s)
+	}
+	return text
+}
+
+func postProc(text string) string {
+	ls := L.GetState()
+	fn := ls.GetGlobal("PostProc")
+	if _, ok := fn.(*glua.LFunction); !ok {
+		return text
+	}
+	err := ls.CallByParam(glua.P{
+		Fn:      fn,
+		NRet:    1,
+		Protect: true,
+	}, glua.LString(text))
+	if err != nil {
+		return text
+	}
+
+	ret := ls.Get(-1)
+	ls.Pop(1)
+	s, ok := ret.(glua.LString)
+	if ok {
+		return string(s)
+	}
+	return text
+}
 
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
@@ -116,10 +168,6 @@ func runLuaFile(name string) {
 	if !fileExists(name) {
 		return
 	}
-
-	// Create a new Lua state.
-	L := lua.New()
-	defer L.Close()
 
 	L.SetGlobal("JournalPath", journalPath)
 
@@ -236,6 +284,10 @@ func main() {
 
 	runLuaFile(initFile)
 
+	defer func() {
+		defer L.Close()
+	}()
+
 	switch cmd {
 	case "add":
 		if isTTY {
@@ -251,22 +303,24 @@ func main() {
 			defer tmpFile.Close()
 			defer os.Remove(tmpFile.Name())
 
-			// write the content to the temporary file
-			date := time.Now().Format("2006-01-02 15:04:05")
-			_, err = tmpFile.WriteString(fmt.Sprintf("# %s\n", date))
-			if err != nil {
-				log.Fatal("Failed to write to temporary file:", err)
-			}
-
+			s := ""
 			// get last name from current directory
 			wd, err := os.Getwd()
 			if err != nil {
 				log.Fatal("Failed to get current directory:", err)
 			}
-			wd = filepath.Base(wd)
-			tagArray := []string{
-				wd,
+			wd, err = filepath.Abs(wd)
+			if err != nil {
+				log.Fatal("Failed to get absolute path:", err)
 			}
+			// remove home directory from path
+			home, err := os.UserHomeDir()
+			if err != nil {
+				log.Fatal("Failed to get home directory:", err)
+			}
+			wd = strings.Replace(wd, home, "", 1)
+			wd = strings.TrimPrefix(wd, "/")
+			tagArray := strings.Split(wd, "/")
 
 			// get git branch name
 			gitBranch, ok := getGitBranch()
@@ -274,17 +328,24 @@ func main() {
 				tagArray = append(tagArray, gitBranch)
 			}
 
-			tags := strings.Join(tagArray, ", ")
-			// write the tags to the temporary file
-			_, err = tmpFile.WriteString(fmt.Sprintf("# tags: %s\n\n", tags))
-			if err != nil {
-				log.Fatal("Failed to write to temporary file:", err)
+			// add # in front of each tag
+			for i := range tagArray {
+				tagArray[i] = "#" + tagArray[i]
 			}
 
-			// read the file
-			prevContent, err := os.ReadFile(tmpFile.Name())
+			tags := strings.Join(tagArray, ", ")
+			s += fmt.Sprintf("%s\n", tags)
+			s = preProc(s)
+
+			date := time.Now().Format("2006-01-02 15:04:05")
+			s += fmt.Sprintf("# %s\n\n", date)
+
+			prevContent := s
+
+			// write the content to the temporary file
+			_, err = tmpFile.WriteString(s)
 			if err != nil {
-				log.Fatal("Failed to read temporary file:", err)
+				log.Fatal("Failed to write to temporary file:", err)
 			}
 
 			// open the file with the editor using exec.Command
@@ -303,7 +364,9 @@ func main() {
 				log.Fatal("Failed to read temporary file:", err)
 			}
 
-			if len(content) == 0 || bytes.Equal(content, prevContent) {
+			content = []byte(postProc(string(content)))
+
+			if len(content) == 0 || bytes.Equal(content, []byte(prevContent)) {
 				// enpty file, do not save
 				return
 			}
