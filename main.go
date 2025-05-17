@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	GitTag      = "v0.0.0"
-	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
-	journalPath = "./"
-	tagPrefix   = "@"
+	GitTag       = "v0.0.0"
+	isTTY        = term.IsTerminal(int(os.Stdout.Fd()))
+	journalPath  = "./"
+	tagPrefix    = "@"
+	journalTitle = "" // optional title for the journal entry (first line if set)
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -275,11 +276,19 @@ func main() {
 	initFile := getInitLuaPath()
 
 	cmd := "add"
-	// check first parameter not prefixed with '-'
+	// parse global options
 	if len(os.Args) > 1 {
 		for i := 1; i < len(os.Args); i++ {
 			arg := os.Args[i]
 			if strings.HasPrefix(arg, "-") {
+				if arg == "--title" || arg == "-t" {
+					i++
+					if i >= len(os.Args) {
+						log.Fatal("Missing title argument")
+					}
+					journalTitle = os.Args[i]
+					continue
+				}
 				continue
 			}
 			cmd = arg
@@ -325,6 +334,10 @@ func main() {
 		defer os.Remove(tmpFile.Name())
 
 		s := ""
+		if journalTitle != "" {
+			s += fmt.Sprintf("# %s\n", journalTitle)
+		}
+
 		// get last name from current directory
 		wd, err := os.Getwd()
 		if err != nil {
