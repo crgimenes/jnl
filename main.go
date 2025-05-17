@@ -356,6 +356,20 @@ func main() {
 		wd = strings.TrimPrefix(wd, "/")
 		tagArray := strings.Split(wd, "/")
 
+		date := time.Now().Format("2006-01-02T15-04-05")
+		s += fmt.Sprintf("%s%s\n", tagPrefix, date)
+
+		beautifiedPath := "~/" + strings.TrimPrefix(wd, "/")
+		s += fmt.Sprintf("%s%s\n", tagPrefix, beautifiedPath)
+
+		userName := os.Getenv("USER")
+		if userName == "" {
+			userName = os.Getenv("USERNAME")
+		}
+		if userName != "" {
+			s += fmt.Sprintf("%s%s\n", tagPrefix, userName)
+		}
+
 		// get git branch name
 		gitBranch, ok := getGitBranch()
 		if ok {
@@ -370,9 +384,6 @@ func main() {
 		tags := strings.Join(tagArray, ", ")
 		s += fmt.Sprintf("%s\n", tags)
 		s = preProc(s)
-
-		date := time.Now().Format("2006-01-02T15-04-05")
-		s += fmt.Sprintf("@%s\n", date)
 
 		/*
 			The first blank line separates the headers
