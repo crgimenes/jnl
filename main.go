@@ -22,7 +22,8 @@ var (
 	isTTY        = term.IsTerminal(int(os.Stdout.Fd()))
 	journalPath  = "./"
 	tagPrefix    = "@"
-	journalTitle = "" // optional title for the journal entry (first line if set)
+	journalTitle = ""    // optional title for the journal entry (first line if set)
+	force        = false // depends on the command
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -289,6 +290,12 @@ func main() {
 					journalTitle = os.Args[i]
 					continue
 				}
+
+				if arg == "--force" || arg == "-f" {
+					force = true
+					continue
+				}
+
 				continue
 			}
 			cmd = arg
@@ -418,8 +425,15 @@ func main() {
 
 		content = []byte(postProc(string(content)))
 
-		if len(content) == 0 || bytes.Equal(content, []byte(prevContent)) {
-			// enpty file, do not save
+		// check if the content is empty
+		if len(content) == 0 {
+			fmt.Println("Empty file, not saving.")
+			return
+		}
+
+		if bytes.Equal(content, []byte(prevContent)) &&
+			journalTitle == "" && !force {
+			fmt.Println("Aparently no changes, not saving, used --force to save.")
 			return
 		}
 
