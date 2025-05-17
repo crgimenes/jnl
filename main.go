@@ -275,9 +275,16 @@ func main() {
 	initFile := getInitLuaPath()
 
 	cmd := "add"
-	// check first parameter
+	// check first parameter not prefixed with '-'
 	if len(os.Args) > 1 {
-		cmd = os.Args[1]
+		for i := 1; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if strings.HasPrefix(arg, "-") {
+				continue
+			}
+			cmd = arg
+			break
+		}
 	}
 
 	if fileExists("./jnl_init.lua") {
