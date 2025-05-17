@@ -18,12 +18,13 @@ import (
 )
 
 var (
-	GitTag       = "v0.0.0"
-	isTTY        = term.IsTerminal(int(os.Stdout.Fd()))
-	journalPath  = "./"
-	tagPrefix    = "@"
-	journalTitle = ""    // optional title for the journal entry (first line if set)
-	force        = false // depends on the command
+	GitTag             = "v0.0.0"
+	force              = false // depends on the command
+	isTTY              = term.IsTerminal(int(os.Stdout.Fd()))
+	journalPath        = "./"
+	journalTitle       = "" // optional title for the journal entry (first line if set)
+	journalTitlePrefix = ""
+	tagPrefix          = "@"
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -171,6 +172,7 @@ func runLuaFile(name string) {
 	}
 
 	L.SetGlobal("JournalPath", journalPath)
+	L.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
 	L.SetGlobal("TagPrefix", tagPrefix)
 
 	// Read the Lua file.
@@ -198,6 +200,7 @@ func runLuaFile(name string) {
 		log.Fatal("Failed to get absolute path:", err)
 	}
 
+	journalTitlePrefix = L.MustGetString("JournalTitlePrefix")
 	tagPrefix = L.MustGetString("TagPrefix") // default to @
 
 }
@@ -342,7 +345,7 @@ func main() {
 
 		s := ""
 		if journalTitle != "" {
-			s += fmt.Sprintf("# %s\n", journalTitle)
+			s += fmt.Sprintf("%s%s\n", journalTitlePrefix, journalTitle)
 		}
 
 		// get last name from current directory
