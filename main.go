@@ -20,7 +20,8 @@ import (
 var (
 	GitTag      = "v0.0.0"
 	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
-	journalPath string
+	journalPath = "./"
+	tagPrefix   = "@"
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -163,13 +164,12 @@ func journalFilename(content []byte) string {
 }
 
 func runLuaFile(name string) {
-	journalPath = "./"
-
 	if !fileExists(name) {
 		return
 	}
 
 	L.SetGlobal("JournalPath", journalPath)
+	L.SetGlobal("TagPrefix", tagPrefix)
 
 	// Read the Lua file.
 	b, err := os.ReadFile(filepath.Clean(name))
@@ -183,7 +183,6 @@ func runLuaFile(name string) {
 	}
 
 	journalPath = L.MustGetString("JournalPath")
-
 	// resolve ~/ to full path
 	if strings.HasPrefix(journalPath, "~/") {
 		home, err := os.UserHomeDir()
@@ -192,11 +191,13 @@ func runLuaFile(name string) {
 		}
 		journalPath = strings.Replace(journalPath, "~", home, 1)
 	}
-
 	journalPath, err = filepath.Abs(journalPath)
 	if err != nil {
 		log.Fatal("Failed to get absolute path:", err)
 	}
+
+	tagPrefix = L.MustGetString("TagPrefix") // default to @
+
 }
 
 func listJournalEntries(pattern string, showFullPath bool) error {
@@ -291,102 +292,130 @@ func main() {
 
 	switch cmd {
 	case "add":
-		if isTTY {
-			// open $EDITOR with a temporary file and use the file as the content
-			editor := os.Getenv("EDITOR")
-			if editor == "" {
-				editor = "vi"
+		// parse arguments
+		// --commit (run `exec.Command("git", "commit", "-F", journalFile).Run()` after saving)
+		runCommitAfterSave := false
+		if len(os.Args) > 1 {
+			for i := 1; i < len(os.Args); i++ {
+				arg := os.Args[i]
+				if arg == "--commit" || arg == "-c" {
+					runCommitAfterSave = true
+					continue
+				}
 			}
-			tmpFile, err := os.CreateTemp("", "jnl-*.md")
-			if err != nil {
-				log.Fatal("Failed to create temporary file:", err)
-			}
-			defer tmpFile.Close()
-			defer os.Remove(tmpFile.Name())
+		}
 
-			s := ""
-			// get last name from current directory
-			wd, err := os.Getwd()
-			if err != nil {
-				log.Fatal("Failed to get current directory:", err)
-			}
-			wd, err = filepath.Abs(wd)
-			if err != nil {
-				log.Fatal("Failed to get absolute path:", err)
-			}
-			// remove home directory from path
-			home, err := os.UserHomeDir()
-			if err != nil {
-				log.Fatal("Failed to get home directory:", err)
-			}
-			wd = strings.Replace(wd, home, "", 1)
-			wd = strings.TrimPrefix(wd, "/")
-			tagArray := strings.Split(wd, "/")
+		// open $EDITOR with a temporary file and use the file as the content
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "vi"
+		}
+		tmpFile, err := os.CreateTemp("", "jnl-*.md")
+		if err != nil {
+			log.Fatal("Failed to create temporary file:", err)
+		}
+		defer tmpFile.Close()
+		defer os.Remove(tmpFile.Name())
 
-			// get git branch name
-			gitBranch, ok := getGitBranch()
-			if ok {
-				tagArray = append(tagArray, gitBranch)
-			}
+		s := ""
+		// get last name from current directory
+		wd, err := os.Getwd()
+		if err != nil {
+			log.Fatal("Failed to get current directory:", err)
+		}
+		wd, err = filepath.Abs(wd)
+		if err != nil {
+			log.Fatal("Failed to get absolute path:", err)
+		}
+		// remove home directory from path
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal("Failed to get home directory:", err)
+		}
+		wd = strings.Replace(wd, home, "", 1)
+		wd = strings.TrimPrefix(wd, "/")
+		tagArray := strings.Split(wd, "/")
 
-			// add # in front of each tag
-			for i := range tagArray {
-				tagArray[i] = "#" + tagArray[i]
-			}
+		// get git branch name
+		gitBranch, ok := getGitBranch()
+		if ok {
+			tagArray = append(tagArray, gitBranch)
+		}
 
-			tags := strings.Join(tagArray, ", ")
-			s += fmt.Sprintf("%s\n", tags)
-			s = preProc(s)
+		// add @ in front of each tag
+		for i := range tagArray {
+			tagArray[i] = "@" + tagArray[i]
+		}
 
-			date := time.Now().Format("2006-01-02 15:04:05")
-			s += fmt.Sprintf("# %s\n\n", date)
+		tags := strings.Join(tagArray, ", ")
+		s += fmt.Sprintf("%s\n", tags)
+		s = preProc(s)
 
-			prevContent := s
+		date := time.Now().Format("2006-01-02T15-04-05")
+		s += fmt.Sprintf("@%s\n", date)
 
-			// write the content to the temporary file
-			_, err = tmpFile.WriteString(s)
-			if err != nil {
-				log.Fatal("Failed to write to temporary file:", err)
-			}
+		/*
+			The first blank line separates the headers
+			from the body of the journal entry.
+		*/
+		s += "\n"
 
-			// open the file with the editor using exec.Command
-			cmd := exec.Command(editor, tmpFile.Name())
+		prevContent := s
+
+		// write the content to the temporary file
+		_, err = tmpFile.WriteString(s)
+		if err != nil {
+			log.Fatal("Failed to write to temporary file:", err)
+		}
+
+		// open the file with the editor using exec.Command
+		cmd := exec.Command(editor, tmpFile.Name())
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err = cmd.Run()
+		if err != nil {
+			log.Fatal("Failed to run editor:", err)
+		}
+
+		// read the content of the file
+		content, err := os.ReadFile(tmpFile.Name())
+		if err != nil {
+			log.Fatal("Failed to read temporary file:", err)
+		}
+
+		content = []byte(postProc(string(content)))
+
+		if len(content) == 0 || bytes.Equal(content, []byte(prevContent)) {
+			// enpty file, do not save
+			return
+		}
+
+		// save the content to the journal path
+		journalFile := filepath.Join(journalPath, journalFilename(content))
+
+		err = os.WriteFile(journalFile, content, 0600)
+		if err != nil {
+			log.Fatal("Failed to write journal file:", err)
+		}
+
+		fmt.Println("Journal entry saved to:", journalFile)
+		if runCommitAfterSave {
+			fmt.Println("git commit...")
+			cmd := exec.Command("git", "commit", "-F", journalFile)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Env = os.Environ()
 			err = cmd.Run()
 			if err != nil {
-				log.Fatal("Failed to run editor:", err)
+				log.Fatalf("Failed to run `git commit -F %s`: %v\n", journalFile, err)
 			}
-
-			// read the content of the file
-			content, err := os.ReadFile(tmpFile.Name())
-			if err != nil {
-				log.Fatal("Failed to read temporary file:", err)
-			}
-
-			content = []byte(postProc(string(content)))
-
-			if len(content) == 0 || bytes.Equal(content, []byte(prevContent)) {
-				// enpty file, do not save
-				return
-			}
-
-			// save the content to the journal path
-			journalFile := filepath.Join(journalPath, journalFilename(content))
-
-			err = os.WriteFile(journalFile, content, 0600)
-			if err != nil {
-				log.Fatal("Failed to write journal file:", err)
-			}
-
-			fmt.Println("Journal entry saved to:", journalFile)
-			return
 		}
 
-		// load the content from stdin using readAll and it as the content
 		return
+
 	case "ls":
 		// List journal entries, optionally filtered by pattern
 		var pattern string
@@ -409,6 +438,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		return
+	case "path":
+		fmt.Println(journalPath)
 		return
 	case "rm":
 		log.Println("not implemented")
