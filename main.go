@@ -409,15 +409,45 @@ func main() {
 			log.Fatal("Failed to write to temporary file:", err)
 		}
 
-		// open the file with the editor using exec.Command
-		cmd := exec.Command(editor, tmpFile.Name())
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Env = os.Environ()
-		err = cmd.Run()
-		if err != nil {
-			log.Fatal("Failed to run editor:", err)
+		/*
+			// open the file with the editor using exec.Command
+			cmd := exec.Command(editor, tmpFile.Name())
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Env = os.Environ()
+			err = cmd.Run()
+			if err != nil {
+				log.Fatal("Failed to run editor:", err)
+			}
+		*/
+
+		// obtém a LState do gopher-lua
+		ls := L.GetState()
+		// tenta recuperar a função Exec do Lua
+		raw := ls.GetGlobal("Exec")
+		fn, ok := raw.(*glua.LFunction)
+		if ok {
+			// chama Exec(editor, tmpFile)
+			err := ls.CallByParam(glua.P{
+				Fn:      fn,
+				NRet:    0,
+				Protect: true,
+			}, glua.LString(editor), glua.LString(tmpFile.Name()))
+			if err != nil {
+				log.Fatalf("Lua Exec error: %v", err)
+			}
+		} else {
+			// fallback padrão: chamar o binário diretamente
+			cmd := exec.Command(editor, tmpFile.Name())
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Env = os.Environ()
+			err := cmd.Run()
+			if err != nil {
+				log.Fatal("Failed to run editor:", err)
+			}
 		}
 
 		// read the content of the file
