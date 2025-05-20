@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -271,6 +272,25 @@ func getGitBranch() (string, bool) {
 		return "", false
 	}
 	return string(bytes.TrimSpace(out)), true
+}
+
+func webServer() {
+	listenAddr := ":8080"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "drafts")
+	})
+
+	s := &http.Server{
+		Handler:        mux,
+		Addr:           listenAddr,
+		ReadTimeout:    5 * time.Second,
+		WriteTimeout:   5 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	log.Printf("Starting server on %s\n", listenAddr)
+	log.Fatal(s.ListenAndServe())
 }
 
 func main() {
@@ -551,7 +571,7 @@ func main() {
 		log.Println("not implemented")
 		return
 	case "serve": // start a web server
-		log.Println("not implemented")
+		webServer()
 		return
 	case "sync": // sync with remote server
 		log.Println("not implemented")
