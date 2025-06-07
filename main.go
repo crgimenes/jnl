@@ -486,7 +486,7 @@ func main() {
 
 		if bytes.Equal(content, []byte(prevContent)) &&
 			journalTitle == "" && !force {
-			fmt.Println("Aparently no changes, not saving, used --force to save.")
+			fmt.Println("Aparently no changes, not saving, use --force to save.")
 			return
 		}
 
