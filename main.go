@@ -26,6 +26,7 @@ var (
 	journalTitle       = "" // optional title for the journal entry (first line if set)
 	journalTitlePrefix = ""
 	tagPrefix          = "@"
+	listenAddr         = ":8080" // default address for the web server
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -175,6 +176,7 @@ func runLuaFile(name string) {
 	L.SetGlobal("JournalPath", journalPath)
 	L.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
 	L.SetGlobal("TagPrefix", tagPrefix)
+	L.SetGlobal("ListenAddr", listenAddr)
 
 	// Read the Lua file.
 	b, err := os.ReadFile(filepath.Clean(name))
@@ -203,6 +205,7 @@ func runLuaFile(name string) {
 
 	journalTitlePrefix = L.MustGetString("JournalTitlePrefix")
 	tagPrefix = L.MustGetString("TagPrefix") // default to @
+	listenAddr = L.MustGetString("ListenAddr")
 
 }
 
@@ -275,7 +278,6 @@ func getGitBranch() (string, bool) {
 }
 
 func webServer() {
-	listenAddr := ":8080"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "drafts")
