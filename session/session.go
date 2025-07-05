@@ -69,7 +69,7 @@ func (c *Control) Save(w http.ResponseWriter, r *http.Request, id string, sessio
 	expireAt := time.Now().Add(3 * time.Hour)
 
 	// if localhost accept all cookies (secure=false)
-	var secure bool = true
+	var secure = true
 	lhost := strings.Split(r.Host, ":")[0]
 	if lhost == "localhost" {
 		secure = false
