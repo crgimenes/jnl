@@ -148,13 +148,29 @@ func simpleSlugify(s string) string {
 }
 
 func journalFilename(content []byte) string {
-	// extract first line
-	idx := bytes.IndexByte(content, '\n')
-	firstLine := string(content)
-	if idx >= 0 {
-		firstLine = string(content[:idx])
+	// Parse header to extract title or first line of body
+	header, body := parseHeader(content)
+
+	var firstLine string
+
+	// Check if there's a title in the header
+	if title, hasTitle := header["title"]; hasTitle && title != "" {
+		firstLine = title
+	} else {
+		// Extract first meaningful line from body (skip empty lines)
+		lines := bytes.SplitSeq(body, []byte("\n"))
+		for line := range lines {
+			lineStr := strings.TrimSpace(string(line))
+			if lineStr != "" {
+				firstLine = lineStr
+				break
+			}
+		}
+
+		// Remove markdown headers (# ## ###, etc.)
+		firstLine = strings.TrimSpace(strings.TrimLeft(firstLine, "#"))
+		firstLine = strings.TrimSpace(firstLine)
 	}
-	firstLine = strings.TrimSpace(firstLine)
 
 	// slugify
 	slug := simpleSlugify(firstLine)
@@ -266,15 +282,67 @@ func listJournalEntries(pattern string, showFullPath bool) error {
 	return nil
 }
 
+// isInGitRepository checks if the current directory or any parent directory contains a .git folder
+func isInGitRepository() bool {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+
+	// Walk up the directory tree looking for .git
+	for {
+		gitDir := filepath.Join(currentDir, ".git")
+		if info, err := os.Stat(gitDir); err == nil {
+			// Check if it's a directory or a file (for git worktrees)
+			if info.IsDir() {
+				return true
+			}
+			// For git worktrees, .git is a file containing the path to the real .git directory
+			if info.Mode().IsRegular() {
+				return true
+			}
+		}
+
+		// Move to parent directory
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			// We've reached the root directory
+			break
+		}
+		currentDir = parentDir
+	}
+
+	return false
+}
+
 func getGitBranch() (string, bool) {
+	// First check if we're in a git repository
+	if !isInGitRepository() {
+		return "", false
+	}
+
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
-		// ignore errors if not in a git repository
+		// Even if we found .git, the command might fail (e.g., no commits yet)
 		return "", false
 	}
-	return string(bytes.TrimSpace(out)), true
+
+	branch := string(bytes.TrimSpace(out))
+	// Handle detached HEAD state
+	if branch == "HEAD" {
+		// Try to get the commit hash instead
+		cmd = exec.Command("git", "rev-parse", "--short", "HEAD")
+		cmd.Env = os.Environ()
+		out, err = cmd.Output()
+		if err != nil {
+			return "", false
+		}
+		return "detached-" + string(bytes.TrimSpace(out)), true
+	}
+
+	return branch, true
 }
 
 func webServer() {
@@ -293,6 +361,159 @@ func webServer() {
 
 	log.Printf("Starting server on %s\n", listenAddr)
 	log.Fatal(s.ListenAndServe())
+}
+
+// editJournalEntry edits an existing journal entry
+func editJournalEntry(filename string) error {
+	// Construct full path
+	journalFile := filepath.Join(journalPath, filename)
+	if !strings.HasSuffix(journalFile, ".md") {
+		journalFile += ".md"
+	}
+
+	// Check if file exists
+	if !fileExists(journalFile) {
+		return fmt.Errorf("journal entry not found: %s", filename)
+	}
+
+	// Read existing content
+	content, err := os.ReadFile(journalFile)
+	if err != nil {
+		return fmt.Errorf("failed to read journal entry: %v", err)
+	}
+
+	// Parse existing header and body
+	header, body := parseHeader(content)
+
+	// Open editor with temporary file
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+
+	tmpFile, err := os.CreateTemp("", "jnl-edit-*.md")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %v", err)
+	}
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	// Write current content to temp file
+	reconstructed := buildHeader(header) + string(body)
+	_, err = tmpFile.WriteString(reconstructed)
+	if err != nil {
+		return fmt.Errorf("failed to write to temporary file: %v", err)
+	}
+
+	// Open editor
+	ls := L.GetState()
+	raw := ls.GetGlobal("Exec")
+	fn, ok := raw.(*glua.LFunction)
+	if ok {
+		err := ls.CallByParam(glua.P{
+			Fn:      fn,
+			NRet:    0,
+			Protect: true,
+		}, glua.LString(editor), glua.LString(tmpFile.Name()))
+		if err != nil {
+			return fmt.Errorf("lua Exec error: %v", err)
+		}
+	} else {
+		cmd := exec.Command(editor, tmpFile.Name())
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("failed to run editor: %v", err)
+		}
+	}
+
+	// Read edited content
+	editedContent, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		return fmt.Errorf("failed to read edited file: %v", err)
+	}
+
+	editedContent = []byte(postProc(string(editedContent)))
+
+	// Check if content changed
+	if bytes.Equal(content, editedContent) && !force {
+		fmt.Println("No changes detected, not saving. Use --force to save anyway.")
+		return nil
+	}
+
+	// Save the updated content
+	err = os.WriteFile(journalFile, editedContent, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to save journal entry: %v", err)
+	}
+
+	fmt.Println("Journal entry updated:", journalFile)
+	return nil
+}
+
+// catJournalEntry displays the content of a journal entry
+func catJournalEntry(filename string) error {
+	// Construct full path
+	journalFile := filepath.Join(journalPath, filename)
+	if !strings.HasSuffix(journalFile, ".md") {
+		journalFile += ".md"
+	}
+
+	// Check if file exists
+	if !fileExists(journalFile) {
+		return fmt.Errorf("journal entry not found: %s", filename)
+	}
+
+	// Read and display content
+	content, err := os.ReadFile(journalFile)
+	if err != nil {
+		return fmt.Errorf("failed to read journal entry: %v", err)
+	}
+
+	fmt.Print(string(content))
+	return nil
+}
+
+// showJournalEntry displays a journal entry with header information separated
+func showJournalEntry(filename string) error {
+	// Construct full path
+	journalFile := filepath.Join(journalPath, filename)
+	if !strings.HasSuffix(journalFile, ".md") {
+		journalFile += ".md"
+	}
+
+	// Check if file exists
+	if !fileExists(journalFile) {
+		return fmt.Errorf("journal entry not found: %s", filename)
+	}
+
+	// Read content
+	content, err := os.ReadFile(journalFile)
+	if err != nil {
+		return fmt.Errorf("failed to read journal entry: %v", err)
+	}
+
+	// Parse header and body
+	header, body := parseHeader(content)
+
+	// Display header information
+	fmt.Printf("=== %s ===\n", filename)
+	if len(header) > 0 {
+		fmt.Println("Header:")
+		for k, v := range header {
+			fmt.Printf("  %s: %s\n", k, v)
+		}
+		fmt.Println()
+	}
+
+	// Display body
+	fmt.Print(string(body))
+	return nil
 }
 
 func main() {
@@ -365,12 +586,13 @@ func main() {
 		defer tmpFile.Close()
 		defer os.Remove(tmpFile.Name())
 
-		s := ""
-		if journalTitle != "" {
-			s += fmt.Sprintf("%s%s\n", journalTitlePrefix, journalTitle)
-		}
+		// Build header info
+		headerInfo := make(map[string]string)
 
-		// get last name from current directory
+		// Add date
+		headerInfo["date"] = time.Now().Format(time.RFC3339)
+
+		// get current directory info
 		wd, err := os.Getwd()
 		if err != nil {
 			log.Fatal("Failed to get current directory:", err)
@@ -388,23 +610,22 @@ func main() {
 		wd = strings.TrimPrefix(wd, "/")
 		tagArray := strings.Split(wd, "/")
 
-		date := time.Now().Format("2006-01-02T15-04-05")
-		s += fmt.Sprintf("%s%s\n", tagPrefix, date)
-
 		beautifiedPath := "~/" + strings.TrimPrefix(wd, "/")
-		s += fmt.Sprintf("%s%s\n", tagPrefix, beautifiedPath)
+		headerInfo["dir"] = beautifiedPath
 
+		// Add user
 		userName := os.Getenv("USER")
 		if userName == "" {
 			userName = os.Getenv("USERNAME")
 		}
 		if userName != "" {
-			s += fmt.Sprintf("%s%s\n", tagPrefix, userName)
+			headerInfo["user"] = userName
 		}
 
 		// get git branch name
 		gitBranch, ok := getGitBranch()
 		if ok {
+			headerInfo["branch"] = gitBranch
 			tagArray = append(tagArray, gitBranch)
 		}
 
@@ -414,14 +635,16 @@ func main() {
 		}
 
 		tags := strings.Join(tagArray, ", ")
-		s += fmt.Sprintf("%s\n", tags)
-		s = preProc(s)
+		headerInfo["tags"] = tags
 
-		/*
-			The first blank line separates the headers
-			from the body of the journal entry.
-		*/
-		s += "\n"
+		// Add title if provided
+		if journalTitle != "" {
+			headerInfo["title"] = journalTitle
+		}
+
+		// Build the header using the new function
+		s := buildHeader(headerInfo)
+		s = preProc(s)
 
 		prevContent := s
 
@@ -546,13 +769,37 @@ func main() {
 		log.Println("not implemented")
 		return
 	case "edit":
-		log.Println("not implemented")
+		// Edit an existing journal entry
+		if len(os.Args) < 3 {
+			log.Fatal("Usage: jnl edit <filename>")
+		}
+		filename := os.Args[2]
+		err := editJournalEntry(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	case "less":
-		log.Println("not implemented")
+		// Show a journal entry with header information
+		if len(os.Args) < 3 {
+			log.Fatal("Usage: jnl less <filename>")
+		}
+		filename := os.Args[2]
+		err := showJournalEntry(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	case "cat":
-		log.Println("not implemented")
+		// Display raw content of a journal entry
+		if len(os.Args) < 3 {
+			log.Fatal("Usage: jnl cat <filename>")
+		}
+		filename := os.Args[2]
+		err := catJournalEntry(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	case "publish":
 		log.Println("not implemented")
