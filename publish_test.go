@@ -94,7 +94,7 @@ func TestBuildHugoFrontmatter(t *testing.T) {
 		"date = \"2025-07-05T10:56:44-03:00\"",
 		"lastmod = \"2025-07-05T10:56:44-03:00\"",
 		"title = \"Test Article\"",
-		"tags = [\"Projects\", \"jnl\", \"golang\"]", // public should be excluded
+		"tags = [\"Projects\", \"jnl\", \"public\", \"golang\"]", // all tags should be included
 		"+++",
 	}
 
@@ -104,9 +104,9 @@ func TestBuildHugoFrontmatter(t *testing.T) {
 		}
 	}
 
-	// Check that the public tag is not included in tags
-	if strings.Contains(result, "\"public\"") {
-		t.Error("buildHugoFrontmatter() should not include the publish tag in Hugo tags")
+	// Check that all tags are included in Hugo frontmatter
+	if !strings.Contains(result, "\"public\"") {
+		t.Error("buildHugoFrontmatter() should include all tags, including the publish tag")
 	}
 }
 

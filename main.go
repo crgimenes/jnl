@@ -646,8 +646,8 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 		var cleanTags []string
 		for _, tag := range tagsList {
 			tag = strings.TrimSpace(tag)
-			tag = strings.TrimPrefix(tag, "@")  // Remove @ prefix
-			if tag != "" && tag != publishTag { // Don't include the publish tag itself
+			tag = strings.TrimPrefix(tag, "@") // Remove @ prefix
+			if tag != "" {
 				cleanTags = append(cleanTags, tag)
 			}
 		}
