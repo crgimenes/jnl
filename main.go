@@ -26,7 +26,10 @@ var (
 	journalTitle       = "" // optional title for the journal entry (first line if set)
 	journalTitlePrefix = ""
 	tagPrefix          = "@"
-	listenAddr         = ":8080" // default address for the web server
+	listenAddr         = ":8080"                       // default address for the web server
+	publishPath        = ""                            // path where published entries will be exported
+	publishTag         = "public"                      // tag that marks entries as publishable
+	blockedTags        = []string{"secret", "private"} // tags that prevent publishing
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -193,6 +196,9 @@ func runLuaFile(name string) {
 	L.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
 	L.SetGlobal("TagPrefix", tagPrefix)
 	L.SetGlobal("ListenAddr", listenAddr)
+	L.SetGlobal("PublishPath", publishPath)
+	L.SetGlobal("PublishTag", publishTag)
+	L.SetGlobal("BlockedTags", strings.Join(blockedTags, ","))
 
 	// Read the Lua file.
 	b, err := os.ReadFile(filepath.Clean(name))
@@ -222,6 +228,36 @@ func runLuaFile(name string) {
 	journalTitlePrefix = L.MustGetString("JournalTitlePrefix")
 	tagPrefix = L.MustGetString("TagPrefix") // default to @
 	listenAddr = L.MustGetString("ListenAddr")
+	publishPath = L.MustGetString("PublishPath")
+
+	// resolve ~/ to full path for publishPath
+	if strings.HasPrefix(publishPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal("Failed to get home directory:", err)
+		}
+		publishPath = strings.Replace(publishPath, "~", home, 1)
+	}
+	if publishPath != "" {
+		publishPath, err = filepath.Abs(publishPath)
+		if err != nil {
+			log.Fatal("Failed to get absolute path for publishPath:", err)
+		}
+	}
+
+	publishTag = L.MustGetString("PublishTag")
+	if publishTag == "" {
+		publishTag = "public"
+	}
+
+	blockedTagsStr := L.MustGetString("BlockedTags")
+	if blockedTagsStr != "" {
+		blockedTags = strings.Split(blockedTagsStr, ",")
+		// Trim spaces from each tag
+		for i := range blockedTags {
+			blockedTags[i] = strings.TrimSpace(blockedTags[i])
+		}
+	}
 
 }
 
@@ -516,6 +552,250 @@ func showJournalEntry(filename string) error {
 	return nil
 }
 
+// formatHugoDate formats a RFC3339 date to Hugo's expected format
+func formatHugoDate(rfc3339Date string) string {
+	t, err := time.Parse(time.RFC3339, rfc3339Date)
+	if err != nil {
+		// If parsing fails, return the original string
+		return rfc3339Date
+	}
+	// Hugo expects this format: "2006-01-02T15:04:05-07:00"
+	return t.Format(time.RFC3339)
+}
+
+// containsTag checks if a tag list contains a specific tag
+func containsTag(tags string, searchTag string) bool {
+	tagsList := strings.Split(tags, ",")
+	for _, tag := range tagsList {
+		tag = strings.TrimSpace(tag)
+		tag = strings.TrimPrefix(tag, "@") // Remove @ prefix if present
+		if tag == searchTag {
+			return true
+		}
+	}
+	return false
+}
+
+// hasBlockedTag checks if entry contains any blocked tags
+func hasBlockedTag(tags string) bool {
+	for _, blockedTag := range blockedTags {
+		if containsTag(tags, blockedTag) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildHugoFrontmatter creates Hugo-style frontmatter from journal header
+func buildHugoFrontmatter(header map[string]string, body []byte) string {
+	var b strings.Builder
+
+	b.WriteString("+++\n")
+
+	// Required Hugo fields
+	if date, exists := header["date"]; exists {
+		b.WriteString(fmt.Sprintf("date = \"%s\"\n", formatHugoDate(date)))
+		// Set lastmod to the same date if not specified
+		b.WriteString(fmt.Sprintf("lastmod = \"%s\"\n", formatHugoDate(date)))
+	}
+
+	// Title from header or extract from body
+	if title, exists := header["title"]; exists && title != "" {
+		b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(title, "\"", "\\\"")))
+	} else {
+		// Extract title from first line of body
+		lines := bytes.Split(body, []byte("\n"))
+		for _, line := range lines {
+			lineStr := strings.TrimSpace(string(line))
+			if lineStr != "" {
+				// Remove markdown headers
+				lineStr = strings.TrimSpace(strings.TrimLeft(lineStr, "#"))
+				if lineStr != "" {
+					b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(lineStr, "\"", "\\\"")))
+					break
+				}
+			}
+		}
+	}
+
+	// Description (optional, could be derived from body)
+	bodyStr := strings.TrimSpace(string(body))
+	if bodyStr != "" {
+		// Take first sentence or first 150 characters as description
+		lines := strings.Split(bodyStr, "\n")
+		var description string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				description = line
+				break
+			}
+		}
+		if len(description) > 150 {
+			description = description[:147] + "..."
+		}
+		if description != "" {
+			b.WriteString(fmt.Sprintf("description = \"%s\"\n", strings.ReplaceAll(description, "\"", "\\\"")))
+		}
+	}
+
+	// Tags (convert from our format to Hugo format)
+	if tags, exists := header["tags"]; exists {
+		// Parse tags and clean them
+		tagsList := strings.Split(tags, ",")
+		var cleanTags []string
+		for _, tag := range tagsList {
+			tag = strings.TrimSpace(tag)
+			tag = strings.TrimPrefix(tag, "@")  // Remove @ prefix
+			if tag != "" && tag != publishTag { // Don't include the publish tag itself
+				cleanTags = append(cleanTags, tag)
+			}
+		}
+		if len(cleanTags) > 0 {
+			b.WriteString("tags = [")
+			for i, tag := range cleanTags {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				b.WriteString(fmt.Sprintf("\"%s\"", strings.ReplaceAll(tag, "\"", "\\\"")))
+			}
+			b.WriteString("]\n")
+		}
+	}
+
+	b.WriteString("+++\n\n")
+	return b.String()
+}
+
+// publishEntry converts a journal entry to Hugo format and saves it
+func publishEntry(sourceFile, targetDir string) error {
+	// Read the journal entry
+	content, err := os.ReadFile(sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to read source file %s: %v", sourceFile, err)
+	}
+
+	// Parse header and body
+	header, body := parseHeader(content)
+
+	// Check if entry has publish tag
+	tags, hasTags := header["tags"]
+	if !hasTags || !containsTag(tags, publishTag) {
+		return fmt.Errorf("entry %s does not have the publish tag '%s'", sourceFile, publishTag)
+	}
+
+	// Check for blocked tags
+	if hasBlockedTag(tags) {
+		return fmt.Errorf("entry %s contains blocked tags and cannot be published", sourceFile)
+	}
+
+	// Generate Hugo frontmatter
+	hugoContent := buildHugoFrontmatter(header, body)
+	hugoContent += string(body)
+
+	// Create target filename (same name as source but in target directory)
+	sourceFilename := filepath.Base(sourceFile)
+	targetFile := filepath.Join(targetDir, sourceFilename)
+
+	// Ensure target directory exists
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create target directory %s: %v", targetDir, err)
+	}
+
+	// Write the Hugo-formatted file
+	err = os.WriteFile(targetFile, []byte(hugoContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write target file %s: %v", targetFile, err)
+	}
+
+	return nil
+}
+
+// publishCommand implements the publish functionality
+func publishCommand(targetPath string) error {
+	if targetPath == "" {
+		targetPath = publishPath
+	}
+
+	if targetPath == "" {
+		return fmt.Errorf("publish path not specified. Use --path argument or set PublishPath in config")
+	}
+
+	// resolve ~/ to full path for targetPath
+	if strings.HasPrefix(targetPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %v", err)
+		}
+		targetPath = strings.Replace(targetPath, "~", home, 1)
+	}
+	targetPath, err := filepath.Abs(targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for target: %v", err)
+	}
+
+	// Ensure journal directory exists
+	if _, err := os.Stat(journalPath); os.IsNotExist(err) {
+		return fmt.Errorf("journal directory does not exist: %s", journalPath)
+	}
+
+	// Read all files from journal directory
+	files, err := os.ReadDir(journalPath)
+	if err != nil {
+		return fmt.Errorf("failed to read journal directory: %v", err)
+	}
+
+	var publishedCount int
+	var skippedCount int
+	var errorCount int
+
+	fmt.Printf("Publishing entries from %s to %s\n", journalPath, targetPath)
+	fmt.Printf("Looking for entries with tag '%s'...\n", publishTag)
+
+	for _, file := range files {
+		// Skip directories and non-markdown files
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
+			continue
+		}
+
+		sourceFile := filepath.Join(journalPath, file.Name())
+
+		// Try to publish the entry
+		err := publishEntry(sourceFile, targetPath)
+		if err != nil {
+			if strings.Contains(err.Error(), "does not have the publish tag") {
+				skippedCount++
+				continue
+			}
+			if strings.Contains(err.Error(), "contains blocked tags") {
+				fmt.Printf("⚠️  Skipped %s: contains blocked tags\n", file.Name())
+				skippedCount++
+				continue
+			}
+			fmt.Printf("❌ Error publishing %s: %v\n", file.Name(), err)
+			errorCount++
+			continue
+		}
+
+		fmt.Printf("✅ Published: %s\n", file.Name())
+		publishedCount++
+	}
+
+	fmt.Printf("\nPublish summary:\n")
+	fmt.Printf("  Published: %d entries\n", publishedCount)
+	fmt.Printf("  Skipped: %d entries\n", skippedCount)
+	if errorCount > 0 {
+		fmt.Printf("  Errors: %d entries\n", errorCount)
+	}
+
+	if publishedCount == 0 {
+		fmt.Printf("\nNo entries found with tag '%s' for publishing.\n", publishTag)
+		fmt.Printf("To publish an entry, add '%s%s' to its tags.\n", tagPrefix, publishTag)
+	}
+
+	return nil
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -802,7 +1082,30 @@ func main() {
 		}
 		return
 	case "publish":
-		log.Println("not implemented")
+		// Publish journal entries with publish tag to Hugo format
+		var targetPath string
+
+		// Parse arguments for --path option
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--path" || arg == "-p" {
+				i++
+				if i >= len(os.Args) {
+					log.Fatal("Missing path argument for --path")
+				}
+				targetPath = os.Args[i]
+				continue
+			}
+			// First non-flag argument is the target path
+			if targetPath == "" && !strings.HasPrefix(arg, "-") {
+				targetPath = arg
+			}
+		}
+
+		err := publishCommand(targetPath)
+		if err != nil {
+			log.Fatal(err)
+		}
 		return
 	case "review":
 		log.Println("not implemented")
