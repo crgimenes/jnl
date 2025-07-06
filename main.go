@@ -30,6 +30,7 @@ var (
 	publishPath        = ""                            // path where published entries will be exported
 	publishTag         = "public"                      // tag that marks entries as publishable
 	blockedTags        = []string{"secret", "private"} // tags that prevent publishing
+	directoryTags      = make(map[string][]string)     // map directory paths to automatic tags
 
 	// Create a new Lua state.
 	L = lua.New()
@@ -257,6 +258,35 @@ func runLuaFile(name string) {
 		for i := range blockedTags {
 			blockedTags[i] = strings.TrimSpace(blockedTags[i])
 		}
+	}
+
+	// Load DirectoryTags configuration
+	directoryTagsTable := L.GetGlobalTable("DirectoryTags")
+	if directoryTagsTable != nil {
+		directoryTags = make(map[string][]string)
+		directoryTagsTable.ForEach(func(key, value glua.LValue) {
+			keyStr := key.String()
+			if valueTable, ok := value.(*glua.LTable); ok {
+				var tags []string
+				valueTable.ForEach(func(_, tagValue glua.LValue) {
+					tag := tagValue.String()
+					tags = append(tags, tag)
+				})
+				// Expand home directory if needed
+				if strings.HasPrefix(keyStr, "~/") {
+					home, err := os.UserHomeDir()
+					if err == nil {
+						keyStr = strings.Replace(keyStr, "~", home, 1)
+					}
+				}
+				// Convert to absolute path
+				if absPath, err := filepath.Abs(keyStr); err == nil {
+					directoryTags[absPath] = tags
+				} else {
+					directoryTags[keyStr] = tags
+				}
+			}
+		})
 	}
 
 }
@@ -796,6 +826,34 @@ func publishCommand(targetPath string) error {
 	return nil
 }
 
+// getDirectoryTags returns the automatic tags for the current directory
+// by checking if the current directory matches any configured directory patterns
+func getDirectoryTags(currentDir string) []string {
+	var tags []string
+
+	// Convert current directory to absolute path
+	absCurrentDir, err := filepath.Abs(currentDir)
+	if err != nil {
+		return tags
+	}
+
+	// Check exact matches and parent directory matches
+	for configuredDir, dirTags := range directoryTags {
+		// Convert configured directory to absolute path if needed
+		absConfiguredDir, err := filepath.Abs(configuredDir)
+		if err != nil {
+			continue
+		}
+
+		// Check if current directory is the same or a subdirectory of configured directory
+		if absCurrentDir == absConfiguredDir || strings.HasPrefix(absCurrentDir+"/", absConfiguredDir+"/") {
+			tags = append(tags, dirTags...)
+		}
+	}
+
+	return tags
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -908,6 +966,10 @@ func main() {
 			headerInfo["branch"] = gitBranch
 			tagArray = append(tagArray, gitBranch)
 		}
+
+		// Add directory-specific tags
+		directorySpecificTags := getDirectoryTags(wd)
+		tagArray = append(tagArray, directorySpecificTags...)
 
 		// add @ in front of each tag
 		for i := range tagArray {
