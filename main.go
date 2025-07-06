@@ -568,7 +568,7 @@ func containsTag(tags string, searchTag string) bool {
 	tagsList := strings.Split(tags, ",")
 	for _, tag := range tagsList {
 		tag = strings.TrimSpace(tag)
-		tag = strings.TrimPrefix(tag, "@") // Remove @ prefix if present
+		tag = strings.TrimPrefix(tag, tagPrefix) // Remove @ prefix if exists
 		if tag == searchTag {
 			return true
 		}
@@ -646,7 +646,7 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 		var cleanTags []string
 		for _, tag := range tagsList {
 			tag = strings.TrimSpace(tag)
-			tag = strings.TrimPrefix(tag, "@") // Remove @ prefix
+			tag = strings.TrimPrefix(tag, tagPrefix) // Remove @ prefix if exists
 			if tag != "" {
 				cleanTags = append(cleanTags, tag)
 			}
@@ -911,7 +911,7 @@ func main() {
 
 		// add @ in front of each tag
 		for i := range tagArray {
-			tagArray[i] = "@" + tagArray[i]
+			tagArray[i] = tagPrefix + tagArray[i]
 		}
 
 		tags := strings.Join(tagArray, ", ")

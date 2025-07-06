@@ -13,6 +13,10 @@ func buildHeader(info map[string]string) string {
 
 	b.WriteString(";;; jnl\n") // opening delimiter
 	for k, v := range info {
+		if v == "" || v == tagPrefix {
+			continue // skip empty values
+		}
+
 		fmt.Fprintf(&b, "%s: %s\n", k, v)
 	}
 	b.WriteString(";;;\n\n") // closing delimiter + blank line
