@@ -414,7 +414,10 @@ func getGitBranch() (string, bool) {
 func webServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "drafts")
+		_, err := fmt.Fprintf(w, "drafts")
+		if err != nil {
+			log.Printf("Error writing response: %v", err)
+		}
 	})
 
 	s := &http.Server{
@@ -462,7 +465,9 @@ func editJournalEntry(filename string) error {
 		return fmt.Errorf("failed to create temporary file: %v", err)
 	}
 	defer func() {
-		tmpFile.Close()
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("Error closing temporary file: %v", err)
+		}
 		os.Remove(tmpFile.Name())
 	}()
 
@@ -595,8 +600,8 @@ func formatHugoDate(rfc3339Date string) string {
 
 // containsTag checks if a tag list contains a specific tag
 func containsTag(tags string, searchTag string) bool {
-	tagsList := strings.Split(tags, ",")
-	for _, tag := range tagsList {
+	tagsList := strings.SplitSeq(tags, ",")
+	for tag := range tagsList {
 		tag = strings.TrimSpace(tag)
 		tag = strings.TrimPrefix(tag, tagPrefix) // Remove @ prefix if exists
 		if tag == searchTag {
@@ -634,8 +639,8 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 		b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(title, "\"", "\\\"")))
 	} else {
 		// Extract title from first line of body
-		lines := bytes.Split(body, []byte("\n"))
-		for _, line := range lines {
+		lines := bytes.SplitSeq(body, []byte("\n"))
+		for line := range lines {
 			lineStr := strings.TrimSpace(string(line))
 			if lineStr != "" {
 				// Remove markdown headers
@@ -922,8 +927,15 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to create temporary file:", err)
 		}
-		defer tmpFile.Close()
-		defer os.Remove(tmpFile.Name())
+
+		defer func() {
+			if err := tmpFile.Close(); err != nil {
+				log.Printf("Failed to close temporary file: %v", err)
+			}
+			if err := os.Remove(tmpFile.Name()); err != nil {
+				log.Printf("Failed to remove temporary file: %v", err)
+			}
+		}()
 
 		// Build header info
 		headerInfo := make(map[string]string)
