@@ -28,4 +28,4 @@ IFS=: read -ra selected < <(
 )
 [ -n "${selected[0]}" ] && \
     $EDITOR "${selected[0]}" "+${selected[1]}" && \
-    echo "${selected[0]}" "+${selected[1]}"
+    echo "${JOURNAL_DIR}/${selected[0]}" "+${selected[1]}"
