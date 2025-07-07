@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -11,12 +12,22 @@ import (
 func buildHeader(info map[string]string) string {
 	var b strings.Builder
 
-	b.WriteString(";;; jnl\n") // opening delimiter
-	for k, v := range info {
-		if v == "" || v == tagPrefix {
-			continue // skip empty values
-		}
+	v, ok := info["tag"]
+	if !ok || v == "" || v == tagPrefix {
+		// remove tag if it is empty or equals to the default tagPrefix
+		delete(info, "tag")
+	}
 
+	sortedKeys := make([]string, 0, len(info))
+	for k := range info {
+		sortedKeys = append(sortedKeys, k)
+	}
+	// Sort keys to ensure consistent order in the Header
+	sort.Strings(sortedKeys)
+
+	b.WriteString(";;; jnl\n") // opening delimiter
+	for _, k := range sortedKeys {
+		v := info[k]
 		fmt.Fprintf(&b, "%s: %s\n", k, v)
 	}
 	b.WriteString(";;;\n\n") // closing delimiter + blank line

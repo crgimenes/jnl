@@ -846,7 +846,8 @@ func getDirectoryTags(currentDir string) []string {
 		}
 
 		// Check if current directory is the same or a subdirectory of configured directory
-		if absCurrentDir == absConfiguredDir || strings.HasPrefix(absCurrentDir+"/", absConfiguredDir+"/") {
+		if absCurrentDir == absConfiguredDir ||
+			strings.HasPrefix(absCurrentDir+"/", absConfiguredDir+"/") {
 			tags = append(tags, dirTags...)
 		}
 	}
@@ -970,6 +971,9 @@ func main() {
 		// Add directory-specific tags
 		directorySpecificTags := getDirectoryTags(wd)
 		tagArray = append(tagArray, directorySpecificTags...)
+
+		// Sort and deduplicate tags
+		sort.Strings(tagArray)
 
 		// add @ in front of each tag
 		for i := range tagArray {
