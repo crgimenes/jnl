@@ -137,13 +137,26 @@ function PostProc(text)
 end
 
 -- Post-save hook - called after the journal entry has been saved
--- Receives the full path to the saved file
-function PostSave(filePath)
-    -- Example: backup the file
-    -- os.execute("cp '" .. filePath .. "' '" .. filePath .. ".bak'")
+-- Receives the full path to the saved file and its content
+function PostSave(filePath, content)
+    -- Example: check for specific tags
+    if string.find(content, "@public") then
+        print("Entry marked as public - ready for publishing!")
+        -- Copy to public directory
+        -- os.execute("cp '" .. filePath .. "' ~/blog/posts/")
+    end
     
-    -- Example: run external processing
-    -- os.execute("~/bin/process-journal.sh '" .. filePath .. "'")
+    -- Example: backup important entries
+    if string.find(content, "@important") then
+        os.execute("cp '" .. filePath .. "' '" .. filePath .. ".important.bak'")
+    end
+    
+    -- Example: word count statistics
+    local wordCount = 0
+    for word in content:gmatch("%S+") do
+        wordCount = wordCount + 1
+    end
+    print("Word count: " .. wordCount)
 end
 
 -- Custom editor execution
