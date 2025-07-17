@@ -148,9 +148,25 @@ func createConfigDir() {
 func simpleSlugify(s string) string {
 	var b strings.Builder
 	b.Grow(len(s)) // preallocate for performance
-	prevDash := false
 
+	prevDash := false
 	for _, r := range s {
+		// map Portuguese diacritics to ASCII
+		switch r {
+		case 'à', 'À', 'á', 'Á', 'â', 'Â', 'ã', 'Ã':
+			r = 'a'
+		case 'é', 'É', 'ê', 'Ê':
+			r = 'e'
+		case 'í', 'Í':
+			r = 'i'
+		case 'ó', 'Ó', 'ô', 'Ô', 'õ', 'Õ':
+			r = 'o'
+		case 'ú', 'Ú':
+			r = 'u'
+		case 'ç', 'Ç':
+			r = 'c'
+		}
+
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(unicode.ToLower(r))
 			prevDash = false
@@ -162,9 +178,7 @@ func simpleSlugify(s string) string {
 		}
 	}
 
-	slug := b.String()
-	slug = strings.Trim(slug, "-")
-	return slug
+	return strings.Trim(b.String(), "-")
 }
 
 func journalFilename(content []byte) string {
