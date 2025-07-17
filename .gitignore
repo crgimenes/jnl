@@ -33,4 +33,4 @@ todo.md
 release.sh
 dist
 *.sql
-
+*.sh
