@@ -84,6 +84,22 @@ func postProc(text string) string {
 	return text
 }
 
+func postSave(filePath string) {
+	ls := L.GetState()
+	fn := ls.GetGlobal("PostSave")
+	if _, ok := fn.(*glua.LFunction); !ok {
+		return
+	}
+	err := ls.CallByParam(glua.P{
+		Fn:      fn,
+		NRet:    0,
+		Protect: true,
+	}, glua.LString(filePath))
+	if err != nil {
+		log.Printf("Error calling PostSave: %v", err)
+	}
+}
+
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
 	if err != nil {
@@ -524,6 +540,10 @@ func editJournalEntry(filename string) error {
 	}
 
 	fmt.Println("Journal entry updated:", journalFile)
+
+	// Call PostSave hook if it exists
+	postSave(journalFile)
+
 	return nil
 }
 
@@ -1082,6 +1102,9 @@ func main() {
 		}
 
 		fmt.Println("Journal entry saved to:", journalFile)
+
+		// Call PostSave hook if it exists
+		postSave(journalFile)
 		if runCommitAfterSave {
 			fmt.Println("git commit...")
 			cmd := exec.Command("git", "commit", "-F", journalFile)

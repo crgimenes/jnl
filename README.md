@@ -136,6 +136,16 @@ function PostProc(text)
     return text
 end
 
+-- Post-save hook - called after the journal entry has been saved
+-- Receives the full path to the saved file
+function PostSave(filePath)
+    -- Example: backup the file
+    -- os.execute("cp '" .. filePath .. "' '" .. filePath .. ".bak'")
+    
+    -- Example: run external processing
+    -- os.execute("~/bin/process-journal.sh '" .. filePath .. "'")
+end
+
 -- Custom editor execution
 function Exec(editor, file)
     local cmd = string.format('%s %s', editor, file)
