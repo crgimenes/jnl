@@ -18,6 +18,27 @@ import (
 	"golang.org/x/term"
 )
 
+// Color constants for terminal output
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorBlue   = "\033[34m"
+	ColorPurple = "\033[35m"
+	ColorCyan   = "\033[36m"
+	ColorWhite  = "\033[37m"
+	ColorBold   = "\033[1m"
+
+	// Bright colors
+	ColorBrightRed    = "\033[91m"
+	ColorBrightGreen  = "\033[92m"
+	ColorBrightYellow = "\033[93m"
+	ColorBrightBlue   = "\033[94m"
+	ColorBrightPurple = "\033[95m"
+	ColorBrightCyan   = "\033[96m"
+)
+
 var (
 	GitTag             = "v0.0.0"
 	force              = false // depends on the command
@@ -35,6 +56,44 @@ var (
 	// Create a new Lua state.
 	L = lua.New()
 )
+
+// isColorSupported checks if the terminal supports color output
+func isColorSupported() bool {
+	term := os.Getenv("TERM")
+	return term != "dumb" && term != ""
+}
+
+// Colored output functions
+func colorize(text, color string) string {
+	if !isColorSupported() {
+		return text
+	}
+	return color + text + ColorReset
+}
+
+func printSuccess(text string) string {
+	return colorize(text, ColorBrightGreen)
+}
+
+func printError(text string) string {
+	return colorize(text, ColorBrightRed)
+}
+
+func printWarning(text string) string {
+	return colorize(text, ColorBrightYellow)
+}
+
+func printInfo(text string) string {
+	return colorize(text, ColorBrightBlue)
+}
+
+func printHeader(text string) string {
+	return colorize(text, ColorBold+ColorBrightCyan)
+}
+
+func printHighlight(text string) string {
+	return colorize(text, ColorBrightPurple)
+}
 
 func preProc(text string) string {
 	ls := L.GetState()
@@ -363,7 +422,7 @@ func listJournalEntries(pattern string, showFullPath bool) error {
 	sort.Strings(matchedFiles)
 
 	if len(matchedFiles) == 0 {
-		fmt.Println("No journal entries found.")
+		fmt.Println(printWarning("● No journal entries found."))
 		return nil
 	}
 
@@ -543,7 +602,7 @@ func editJournalEntry(filename string) error {
 
 	// Check if content changed
 	if bytes.Equal(content, editedContent) && !force {
-		fmt.Println("No changes detected, not saving. Use --force to save anyway.")
+		fmt.Println(printWarning("● No changes detected, not saving. Use --force to save anyway."))
 		return nil
 	}
 
@@ -553,7 +612,7 @@ func editJournalEntry(filename string) error {
 		return fmt.Errorf("failed to save journal entry: %v", err)
 	}
 
-	fmt.Println("Journal entry updated:", journalFile)
+	fmt.Println(printSuccess("● Journal entry updated:"), printHighlight(journalFile))
 
 	// Call PostSave hook if it exists
 	postSave(journalFile, editedContent)
@@ -818,8 +877,8 @@ func publishCommand(targetPath string) error {
 	var skippedCount int
 	var errorCount int
 
-	fmt.Printf("Publishing entries from %s to %s\n", journalPath, targetPath)
-	fmt.Printf("Looking for entries with tag '%s'...\n", publishTag)
+	fmt.Printf("%s %s %s %s\n", printInfo("● Publishing entries from"), printHighlight(journalPath), printInfo("to"), printHighlight(targetPath))
+	fmt.Printf("%s %s%s\n", printInfo("● Looking for entries with tag"), printHighlight("'"+publishTag+"'"), printInfo("..."))
 
 	for _, file := range files {
 		// Skip directories and non-markdown files
@@ -837,29 +896,29 @@ func publishCommand(targetPath string) error {
 				continue
 			}
 			if strings.Contains(err.Error(), "contains blocked tags") {
-				fmt.Printf("⚠️  Skipped %s: contains blocked tags\n", file.Name())
+				fmt.Printf("%s %s: %s\n", printWarning("● Skipped"), printHighlight(file.Name()), printWarning("contains blocked tags"))
 				skippedCount++
 				continue
 			}
-			fmt.Printf("❌ Error publishing %s: %v\n", file.Name(), err)
+			fmt.Printf("%s %s: %v\n", printError("✗ Error publishing"), printHighlight(file.Name()), err)
 			errorCount++
 			continue
 		}
 
-		fmt.Printf("✅ Published: %s\n", file.Name())
+		fmt.Printf("%s %s\n", printSuccess("● Published:"), printHighlight(file.Name()))
 		publishedCount++
 	}
 
-	fmt.Printf("\nPublish summary:\n")
-	fmt.Printf("  Published: %d entries\n", publishedCount)
-	fmt.Printf("  Skipped: %d entries\n", skippedCount)
+	fmt.Printf("\n%s\n", printHeader("● Publish summary:"))
+	fmt.Printf("  %s %s %s\n", printInfo("Published:"), printHighlight(fmt.Sprintf("%d", publishedCount)), printInfo("entries"))
+	fmt.Printf("  %s %s %s\n", printInfo("Skipped:"), printHighlight(fmt.Sprintf("%d", skippedCount)), printInfo("entries"))
 	if errorCount > 0 {
-		fmt.Printf("  Errors: %d entries\n", errorCount)
+		fmt.Printf("  %s %s %s\n", printError("Errors:"), printHighlight(fmt.Sprintf("%d", errorCount)), printError("entries"))
 	}
 
 	if publishedCount == 0 {
-		fmt.Printf("\nNo entries found with tag '%s' for publishing.\n", publishTag)
-		fmt.Printf("To publish an entry, add '%s%s' to its tags.\n", tagPrefix, publishTag)
+		fmt.Printf("\n%s %s %s\n", printWarning("● No entries found with tag"), printHighlight("'"+publishTag+"'"), printWarning("for publishing."))
+		fmt.Printf("%s %s %s\n", printInfo("● To publish an entry, add"), printHighlight("'"+tagPrefix+publishTag+"'"), printInfo("to its tags."))
 	}
 
 	return nil
@@ -1097,13 +1156,13 @@ func main() {
 
 		// check if the content is empty
 		if len(content) == 0 {
-			fmt.Println("Empty file, not saving.")
+			fmt.Println(printWarning("● Empty file, not saving."))
 			return
 		}
 
 		if bytes.Equal(content, []byte(prevContent)) &&
 			journalTitle == "" && !force {
-			fmt.Println("Aparently no changes, not saving, use --force to save.")
+			fmt.Println(printWarning("● No changes detected, use --force to save."))
 			return
 		}
 
@@ -1115,12 +1174,12 @@ func main() {
 			log.Fatal("Failed to write journal file:", err)
 		}
 
-		fmt.Println("Journal entry saved to:", journalFile)
+		fmt.Println(printSuccess("● Journal entry saved to:"), printHighlight(journalFile))
 
 		// Call PostSave hook if it exists
 		postSave(journalFile, content)
 		if runCommitAfterSave {
-			fmt.Println("git commit...")
+			fmt.Println(printInfo("● git commit..."))
 			cmd := exec.Command("git", "commit", "-F", journalFile)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout

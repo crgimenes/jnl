@@ -141,7 +141,7 @@ end
 function PostSave(filePath, content)
     -- Example: check for specific tags
     if string.find(content, "@public") then
-        print("Entry marked as public - ready for publishing!")
+        print("● Entry marked as public - ready for publishing!")
         -- Copy to public directory
         -- os.execute("cp '" .. filePath .. "' ~/blog/posts/")
     end
@@ -156,7 +156,7 @@ function PostSave(filePath, content)
     for word in content:gmatch("%S+") do
         wordCount = wordCount + 1
     end
-    print("Word count: " .. wordCount)
+    print("● Word count: " .. wordCount)
 end
 
 -- Custom editor execution
