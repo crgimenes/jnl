@@ -1,0 +1,57 @@
+;;; JNL Sample Configuration - Filo Format
+;;; Copy this file to ~/.config/jnl/init.filo or ./jnl_init.filo
+
+(let ()
+  (print "Filo init loaded")
+
+  ;; Journal settings
+  (set JournalPath "~/Documents/wiki/diary")
+  (set JournalTitlePrefix "")
+  (set TagPrefix "@")
+  (set ListenAddr ":8080")
+
+  ;; Publish settings
+  (set PublishPath "~/Documents/hugo-blog/content/posts")
+  (set PublishTag "public")
+  (set BlockedTags "secret,private,confidential")
+
+  ;; Directory-specific automatic tags
+  (set DirectoryTags
+    (list
+      (list "~/work" (list "secret"))
+      (list "~/Projects/jnl" (list "public"))
+      (list "~/Documents/projects/client-project" (list "client" "secret"))
+      (list "~/Documents/public" (list "public" "blog"))
+      (list "~/Documents/company" (list "company" "confidential"))
+      (list "~/Documents/diary" (list "diary" "private"))))
+
+  ;; Preprocessing hook
+  (def pre-proc (fn (text)
+    text))
+
+  ;; Postprocessing hook - adds a footer
+  (def post-proc (fn (text)
+    (str-concat text "\n\n<!-- Processado por PostProc -->\n")))
+
+  ;; Post-save hook
+  (def post-save (fn (file-path content)
+    (print (str-concat "PostSave: Entry saved to " file-path))
+    
+    (if (str-find "@public" content)
+        (print "● Entrada marcada como pública - pode ser publicada!")
+        #t)
+    
+    (if (str-find "@backup" content)
+        (let ()
+          (print "● Fazendo backup da entrada...")
+          (jnl:exec (str-concat "cp '" file-path "' '" file-path ".bak'")))
+        #t)
+    
+    (if (str-find "@important" content)
+        (print "● Entrada marcada como importante!")
+        #t)
+    #t))
+
+  ;; Custom editor execution
+  (def exec (fn (editor file)
+    (jnl:exec (str-concat editor " " file)))))

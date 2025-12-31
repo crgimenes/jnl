@@ -13,7 +13,7 @@ A powerful command-line journal tool that helps you create, organize, and publis
 - 🔒 **Security Controls**: Prevent accidental publishing of sensitive content with blocked tags
 - 📖 **Entry Management**: List, edit, view, and search your journal entries
 - 🚀 **Hugo Publishing**: Export entries to Hugo static site generator format
-- ⚙️ **Lua Configuration**: Flexible configuration with preprocessing and postprocessing hooks
+- ⚙️ **Filo Configuration**: Flexible configuration with preprocessing and postprocessing hooks using the safe Filo scripting language
 
 ## Installation
 
@@ -89,32 +89,37 @@ go build -o jnl .
 
 ## Configuration
 
-JNL uses Lua for configuration, providing powerful customization options. Create a `jnl_init.lua` file in your current directory or at `~/.config/jnl/init.lua`.
+JNL uses the Filo scripting language for configuration, providing safe and powerful customization. Create a `jnl_init.filo` file in your current directory or at `~/.config/jnl/init.filo`.
 
 ### Basic Configuration
 
-```lua
--- Journal settings
-JournalPath = "~/Documents/journal"
-TagPrefix = "@"
+```lisp
+;;; JNL Configuration File - Filo Format
 
--- Publishing settings
-PublishPath = "~/blog/content/posts"
-PublishTag = "public"
-BlockedTags = "secret,private,confidential"
+(let ()
+  ;; Journal settings
+  (set JournalPath "~/Documents/journal")
+  (set JournalTitlePrefix "")
+  (set TagPrefix "@")
+  (set ListenAddr ":8080")
+
+  ;; Publishing settings
+  (set PublishPath "~/blog/content/posts")
+  (set PublishTag "public")
+  (set BlockedTags "secret,private,confidential"))
 ```
 
 ### Directory-Based Automatic Tags
 
 Configure automatic tags based on your workspace location:
 
-```lua
-DirectoryTags = {
-    ["~/Documents/work"] = {"work", "secret"},
-    ["~/Documents/personal"] = {"personal"},
-    ["~/Documents/projects/client-a"] = {"client", "confidential"},
-    ["~/Documents/blog"] = {"blog", "public"},
-}
+```lisp
+(set DirectoryTags
+  (list
+    (list "~/Documents/work" (list "work" "secret"))
+    (list "~/Documents/personal" (list "personal"))
+    (list "~/Documents/projects/client-a" (list "client" "confidential"))
+    (list "~/Documents/blog" (list "blog" "public"))))
 ```
 
 **How it works:**
@@ -125,46 +130,31 @@ DirectoryTags = {
 
 ### Custom Hooks
 
-```lua
--- Preprocessing hook - modify content before editing
-function PreProc(text)
-    return text
-end
+```lisp
+;; Preprocessing hook - modify content before editing
+(def pre-proc (fn (text)
+  text))
 
--- Postprocessing hook - modify content after editing
-function PostProc(text)
-    return text
-end
+;; Postprocessing hook - modify content after editing  
+(def post-proc (fn (text)
+  text))
 
--- Post-save hook - called after the journal entry has been saved
--- Receives the full path to the saved file and its content
-function PostSave(filePath, content)
-    -- Example: check for specific tags
-    if string.find(content, "@public") then
-        print("● Entry marked as public - ready for publishing!")
-        -- Copy to public directory
-        -- os.execute("cp '" .. filePath .. "' ~/blog/posts/")
-    end
-    
-    -- Example: backup important entries
-    if string.find(content, "@important") then
-        os.execute("cp '" .. filePath .. "' '" .. filePath .. ".important.bak'")
-    end
-    
-    -- Example: word count statistics
-    local wordCount = 0
-    for word in content:gmatch("%S+") do
-        wordCount = wordCount + 1
-    end
-    print("● Word count: " .. wordCount)
-end
+;; Post-save hook - called after journal entry is saved
+;; Receives path and content, can trigger side effects
+(def post-save (fn (file-path content)
+  (if (str-find "@public" content)
+      (let ()
+        (jnl:exec "cp '" file-path "' ~/blog/posts/")
+        (print "● Entry marked as public!"))
+      #t)
+  #t))
 
--- Custom editor execution
-function Exec(editor, file)
-    local cmd = string.format('%s %s', editor, file)
-    return os.execute(cmd)
-end
+;; Custom editor execution (optional)
+(def exec (fn (editor file)
+  (jnl:exec (str-concat editor " " file))))
 ```
+
+> **Note**: Filo requires `(if condition then else)` with exactly 3 arguments. Use `#t` for no-op else branch.
 
 ## Journal Entry Format
 
@@ -197,11 +187,11 @@ title: Meeting Notes
 
 Configure directories to automatically add security tags:
 
-```lua
-DirectoryTags = {
-    ["~/Documents/work"] = {"work", "secret"},
-    ["~/Documents/clients"] = {"client", "confidential"},
-}
+```lisp
+(set DirectoryTags
+  (list
+    (list "~/Documents/work" (list "work" "secret"))
+    (list "~/Documents/clients" (list "client" "confidential"))))
 ```
 
 ### Publishing Controls

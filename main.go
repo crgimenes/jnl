@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,8 +14,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/crgimenes/jnl/lua"
-	glua "github.com/yuin/gopher-lua"
+	"github.com/crgimenes/devengine/filo"
 	"golang.org/x/term"
 )
 
@@ -53,8 +53,8 @@ var (
 	blockedTags        = []string{"secret", "private"} // tags that prevent publishing
 	directoryTags      = make(map[string][]string)     // map directory paths to automatic tags
 
-	// Create a new Lua state.
-	L = lua.New()
+	// Create a new Filo state.
+	F = filo.New()
 )
 
 // isColorSupported checks if the terminal supports color output
@@ -96,66 +96,20 @@ func printHighlight(text string) string {
 }
 
 func preProc(text string) string {
-	ls := L.GetState()
-	fn := ls.GetGlobal("PreProc")
-	if _, ok := fn.(*glua.LFunction); !ok {
-		return text
-	}
-	err := ls.CallByParam(glua.P{
-		Fn:      fn,
-		NRet:    1,
-		Protect: true,
-	}, glua.LString(text))
-	if err != nil {
-		return text
-	}
-
-	ret := ls.Get(-1)
-	ls.Pop(1)
-	s, ok := ret.(glua.LString)
-	if ok {
-		return string(s)
-	}
-	return text
+	return F.CallFunctionString("pre-proc", text, text)
 }
 
 func postProc(text string) string {
-	ls := L.GetState()
-	fn := ls.GetGlobal("PostProc")
-	if _, ok := fn.(*glua.LFunction); !ok {
-		return text
-	}
-	err := ls.CallByParam(glua.P{
-		Fn:      fn,
-		NRet:    1,
-		Protect: true,
-	}, glua.LString(text))
-	if err != nil {
-		return text
-	}
-
-	ret := ls.Get(-1)
-	ls.Pop(1)
-	s, ok := ret.(glua.LString)
-	if ok {
-		return string(s)
-	}
-	return text
+	return F.CallFunctionString("post-proc", text, text)
 }
 
 func postSave(filePath string, content []byte) {
-	ls := L.GetState()
-	fn := ls.GetGlobal("PostSave")
-	if _, ok := fn.(*glua.LFunction); !ok {
+	if !F.HasFunction("post-save") {
 		return
 	}
-	err := ls.CallByParam(glua.P{
-		Fn:      fn,
-		NRet:    0,
-		Protect: true,
-	}, glua.LString(filePath), glua.LString(content))
+	_, err := F.CallFunction("post-save", filePath, string(content))
 	if err != nil {
-		log.Printf("Error calling PostSave: %v", err)
+		log.Printf("Error calling post-save: %v", err)
 	}
 }
 
@@ -182,9 +136,9 @@ func configHome() string {
 	return configHome
 }
 
-func getInitLuaPath() string {
+func getInitFiloPath() string {
 	configHome := configHome()
-	return filepath.Join(configHome, "jnl", "init.lua")
+	return filepath.Join(configHome, "jnl", "init.filo")
 }
 
 // createConfigDir creates the config directory if it does not exist.
@@ -277,31 +231,67 @@ func journalFilename(content []byte) string {
 	return fmt.Sprintf("%s-%s.md", ts, slug)
 }
 
-func runLuaFile(name string) {
+func runFiloFile(name string) {
 	if !fileExists(name) {
 		return
 	}
 
-	L.SetGlobal("JournalPath", journalPath)
-	L.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
-	L.SetGlobal("TagPrefix", tagPrefix)
-	L.SetGlobal("ListenAddr", listenAddr)
-	L.SetGlobal("PublishPath", publishPath)
-	L.SetGlobal("PublishTag", publishTag)
-	L.SetGlobal("BlockedTags", strings.Join(blockedTags, ","))
+	// Register string builtins for configuration scripts
+	filo.RegisterStringBuiltins(F.GetEngine())
 
-	// Read the Lua file.
+	// Register print builtin for debugging
+	F.RegisterBuiltin("print", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
+		for i, a := range args {
+			if i > 0 {
+				fmt.Print(" ")
+			}
+			fmt.Print(a.String())
+		}
+		fmt.Println()
+		return filo.VBool(true), nil
+	})
+
+	// Register jnl:exec builtin for running external commands (interactive)
+	F.RegisterBuiltin("jnl:exec", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
+		if len(args) != 1 {
+			return filo.Value{}, fmt.Errorf("jnl:exec expects 1 argument (command)")
+		}
+		cmdStr, err := args[0].AsString()
+		if err != nil {
+			return filo.Value{}, err
+		}
+		cmd := exec.Command("sh", "-c", cmdStr)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err = cmd.Run()
+		if err != nil {
+			return filo.VBool(false), nil
+		}
+		return filo.VBool(true), nil
+	})
+
+	F.SetGlobal("JournalPath", journalPath)
+	F.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
+	F.SetGlobal("TagPrefix", tagPrefix)
+	F.SetGlobal("ListenAddr", listenAddr)
+	F.SetGlobal("PublishPath", publishPath)
+	F.SetGlobal("PublishTag", publishTag)
+	F.SetGlobal("BlockedTags", strings.Join(blockedTags, ","))
+
+	// Read the Filo file.
 	b, err := os.ReadFile(filepath.Clean(name))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = L.DoString(string(b))
+	err = F.DoString(string(b))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	journalPath = L.MustGetString("JournalPath")
+	journalPath = F.MustGetString("JournalPath")
 	// resolve ~/ to full path
 	if strings.HasPrefix(journalPath, "~/") {
 		home, err := os.UserHomeDir()
@@ -315,10 +305,10 @@ func runLuaFile(name string) {
 		log.Fatal("Failed to get absolute path:", err)
 	}
 
-	journalTitlePrefix = L.MustGetString("JournalTitlePrefix")
-	tagPrefix = L.MustGetString("TagPrefix") // default to @
-	listenAddr = L.MustGetString("ListenAddr")
-	publishPath = L.MustGetString("PublishPath")
+	journalTitlePrefix = F.MustGetString("JournalTitlePrefix")
+	tagPrefix = F.MustGetString("TagPrefix") // default to @
+	listenAddr = F.MustGetString("ListenAddr")
+	publishPath = F.MustGetString("PublishPath")
 
 	// resolve ~/ to full path for publishPath
 	if strings.HasPrefix(publishPath, "~/") {
@@ -335,12 +325,12 @@ func runLuaFile(name string) {
 		}
 	}
 
-	publishTag = L.MustGetString("PublishTag")
+	publishTag = F.MustGetString("PublishTag")
 	if publishTag == "" {
 		publishTag = "public"
 	}
 
-	blockedTagsStr := L.MustGetString("BlockedTags")
+	blockedTagsStr := F.MustGetString("BlockedTags")
 	if blockedTagsStr != "" {
 		blockedTags = strings.Split(blockedTagsStr, ",")
 		// Trim spaces from each tag
@@ -350,34 +340,26 @@ func runLuaFile(name string) {
 	}
 
 	// Load DirectoryTags configuration
-	directoryTagsTable := L.GetGlobalTable("DirectoryTags")
-	if directoryTagsTable != nil {
-		directoryTags = make(map[string][]string)
-		directoryTagsTable.ForEach(func(key, value glua.LValue) {
-			keyStr := key.String()
-			if valueTable, ok := value.(*glua.LTable); ok {
-				var tags []string
-				valueTable.ForEach(func(_, tagValue glua.LValue) {
-					tag := tagValue.String()
-					tags = append(tags, tag)
-				})
-				// Expand home directory if needed
-				if strings.HasPrefix(keyStr, "~/") {
-					home, err := os.UserHomeDir()
-					if err == nil {
-						keyStr = strings.Replace(keyStr, "~", home, 1)
-					}
-				}
-				// Convert to absolute path
-				if absPath, err := filepath.Abs(keyStr); err == nil {
-					directoryTags[absPath] = tags
-				} else {
-					directoryTags[keyStr] = tags
-				}
+	// DirectoryTags is stored as: (list (list "path" (list "tag1" "tag2")) ...)
+	directoryTags = F.MustGetMapOfLists("DirectoryTags")
+	// Expand paths
+	expandedTags := make(map[string][]string)
+	for keyStr, tags := range directoryTags {
+		// Expand home directory if needed
+		if strings.HasPrefix(keyStr, "~/") {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				keyStr = strings.Replace(keyStr, "~", home, 1)
 			}
-		})
+		}
+		// Convert to absolute path
+		if absPath, err := filepath.Abs(keyStr); err == nil {
+			expandedTags[absPath] = tags
+		} else {
+			expandedTags[keyStr] = tags
+		}
 	}
-
+	directoryTags = expandedTags
 }
 
 func listJournalEntries(pattern string, showFullPath bool) error {
@@ -568,17 +550,10 @@ func editJournalEntry(filename string) error {
 	}
 
 	// Open editor
-	ls := L.GetState()
-	raw := ls.GetGlobal("Exec")
-	fn, ok := raw.(*glua.LFunction)
-	if ok {
-		err := ls.CallByParam(glua.P{
-			Fn:      fn,
-			NRet:    0,
-			Protect: true,
-		}, glua.LString(editor), glua.LString(tmpFile.Name()))
+	if F.HasFunction("exec") {
+		_, err := F.CallFunction("exec", editor, tmpFile.Name())
 		if err != nil {
-			return fmt.Errorf("lua Exec error: %v", err)
+			return fmt.Errorf("filo exec error: %v", err)
 		}
 	} else {
 		cmd := exec.Command(editor, tmpFile.Name())
@@ -957,7 +932,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
 	createConfigDir()
-	initFile := getInitLuaPath()
+	initFile := getInitFiloPath()
 
 	cmd := "add"
 	// parse global options
@@ -986,14 +961,14 @@ func main() {
 		}
 	}
 
-	if fileExists("./jnl_init.lua") {
-		initFile = "./jnl_init.lua"
+	if fileExists("./jnl_init.filo") {
+		initFile = "./jnl_init.filo"
 	}
 
-	runLuaFile(initFile)
+	runFiloFile(initFile)
 
 	defer func() {
-		defer L.Close()
+		defer F.Close()
 	}()
 
 	switch cmd {
@@ -1118,23 +1093,14 @@ func main() {
 			}
 		*/
 
-		// obtém a LState do gopher-lua
-		ls := L.GetState()
-		// tenta recuperar a função Exec do Lua
-		raw := ls.GetGlobal("Exec")
-		fn, ok := raw.(*glua.LFunction)
-		if ok {
-			// chama Exec(editor, tmpFile)
-			err := ls.CallByParam(glua.P{
-				Fn:      fn,
-				NRet:    0,
-				Protect: true,
-			}, glua.LString(editor), glua.LString(tmpFile.Name()))
+		// Try to use exec function from config, fallback to system
+		if F.HasFunction("exec") {
+			_, err := F.CallFunction("exec", editor, tmpFile.Name())
 			if err != nil {
-				log.Fatalf("Lua Exec error: %v", err)
+				log.Fatalf("filo exec error: %v", err)
 			}
 		} else {
-			// fallback padrão: chamar o binário diretamente
+			// fallback: call the binary directly
 			cmd := exec.Command(editor, tmpFile.Name())
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
