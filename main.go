@@ -240,7 +240,7 @@ func runFiloFile(name string) {
 	filo.RegisterStringBuiltins(F.GetEngine())
 
 	// Register print builtin for debugging
-	F.RegisterBuiltin("print", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
+	if err := F.RegisterBuiltin("print", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
 		for i, a := range args {
 			if i > 0 {
 				fmt.Print(" ")
@@ -249,10 +249,12 @@ func runFiloFile(name string) {
 		}
 		fmt.Println()
 		return filo.VBool(true), nil
-	})
+	}); err != nil {
+		log.Fatal(err)
+	}
 
 	// Register jnl:exec builtin for running external commands (interactive)
-	F.RegisterBuiltin("jnl:exec", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
+	if err := F.RegisterBuiltin("jnl:exec", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
 		if len(args) != 1 {
 			return filo.Value{}, fmt.Errorf("jnl:exec expects 1 argument (command)")
 		}
@@ -270,7 +272,9 @@ func runFiloFile(name string) {
 			return filo.VBool(false), nil
 		}
 		return filo.VBool(true), nil
-	})
+	}); err != nil {
+		log.Fatal(err)
+	}
 
 	F.SetGlobal("JournalPath", journalPath)
 	F.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
