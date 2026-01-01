@@ -2,11 +2,9 @@ module github.com/crgimenes/jnl
 
 go 1.25
 
+require golang.org/x/term v0.38.0
+
 require (
-	github.com/crgimenes/devengine v0.0.0
-	golang.org/x/term v0.38.0
+	github.com/crgimenes/filo v0.0.1
+	golang.org/x/sys v0.39.0 // indirect
 )
-
-require golang.org/x/sys v0.39.0 // indirect
-
-replace github.com/crgimenes/devengine => ../devengine
