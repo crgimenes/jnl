@@ -203,7 +203,8 @@ func journalFilename(content []byte) string {
 	// Check if there's a title in the header
 	if title, hasTitle := header["title"]; hasTitle && title != "" {
 		firstLine = title
-	} else {
+	}
+	if firstLine == "" {
 		// Extract first meaningful line from body (skip empty lines)
 		lines := bytes.SplitSeq(body, []byte("\n"))
 		for line := range lines {
@@ -357,11 +358,11 @@ func runFiloFile(name string) {
 			}
 		}
 		// Convert to absolute path
+		key := keyStr
 		if absPath, err := filepath.Abs(keyStr); err == nil {
-			expandedTags[absPath] = tags
-		} else {
-			expandedTags[keyStr] = tags
+			key = absPath
 		}
+		expandedTags[key] = tags
 	}
 	directoryTags = expandedTags
 }
@@ -707,9 +708,11 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 	}
 
 	// Title from header or extract from body
-	if title, exists := header["title"]; exists && title != "" {
+	title, hasTitle := header["title"]
+	if hasTitle && title != "" {
 		b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(title, "\"", "\\\"")))
-	} else {
+	}
+	if !hasTitle || title == "" {
 		// Extract title from first line of body
 		lines := bytes.SplitSeq(body, []byte("\n"))
 		for line := range lines {

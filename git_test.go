@@ -99,15 +99,14 @@ func TestGetGitBranch(t *testing.T) {
 
 	// Test in the actual project directory (assuming this is a git repo)
 	os.Chdir(originalDir)
-	if isInGitRepository() {
-		branch, ok := getGitBranch()
-		if !ok {
-			t.Error("Should get git branch in actual git repository")
-		} else if branch == "" {
-			t.Error("Git branch should not be empty in actual git repository")
-		}
-		t.Logf("Current git branch: %s", branch)
-	} else {
+	if !isInGitRepository() {
 		t.Skip("Not in a git repository, skipping git branch test")
 	}
+	branch, ok = getGitBranch()
+	if !ok {
+		t.Error("Should get git branch in actual git repository")
+	} else if branch == "" {
+		t.Error("Git branch should not be empty in actual git repository")
+	}
+	t.Logf("Current git branch: %s", branch)
 }
