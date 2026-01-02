@@ -144,7 +144,7 @@ Configure automatic tags based on your workspace location:
 (def post-save (fn (file-path content)
   (if (str-find "@public" content)
       (let ()
-        (jnl:exec "cp '" file-path "' ~/blog/posts/")
+        (jnl:exec (str-concat "cp '" file-path "' ~/blog/posts/"))
         (print "● Entry marked as public!"))
       #t)
   #t))
@@ -154,7 +154,13 @@ Configure automatic tags based on your workspace location:
   (jnl:exec (str-concat editor " " file))))
 ```
 
-> **Note**: Filo requires `(if condition then else)` with exactly 3 arguments. Use `#t` for no-op else branch.
+> **Note**: In Filo, `if` accepts 2 or 3 arguments: `(if cond then [else])`. For hooks like `post-save`, it’s usually best to always provide an `else` branch (often `#t`) so the function returns a boolean consistently.
+
+JNL also registers a few helpful builtins for config scripts:
+
+- `str-*` string functions (via Filo string builtins)
+- `print` for debugging output
+- `jnl:exec` to run an external command (expects exactly 1 string argument)
 
 ## Journal Entry Format
 
