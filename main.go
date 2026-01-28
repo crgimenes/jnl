@@ -935,6 +935,26 @@ func getDirectoryTags(currentDir string) []string {
 	return tags
 }
 
+// sortAndUnique sorts the slice and removes duplicate strings
+// It modifies the input slice in place and returns the sliced result
+func sortAndUnique(input []string) []string {
+	if len(input) < 2 {
+		return input
+	}
+
+	sort.Strings(input)
+
+	j := 0
+	for i := 1; i < len(input); i++ {
+		if input[j] == input[i] {
+			continue
+		}
+		j++
+		input[j] = input[i]
+	}
+	return input[:j+1]
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -1060,7 +1080,7 @@ func main() {
 		tagArray = append(tagArray, directorySpecificTags...)
 
 		// Sort and deduplicate tags
-		sort.Strings(tagArray)
+		tagArray = sortAndUnique(tagArray)
 
 		// add @ in front of each tag
 		for i := range tagArray {
