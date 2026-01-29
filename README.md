@@ -96,7 +96,7 @@ JNL uses the Filo scripting language for configuration, providing safe and power
 ```lisp
 ;;; JNL Configuration File - Filo Format
 
-(let ()
+(do
   ;; Journal settings
   (set JournalPath "~/Documents/journal")
   (set JournalTitlePrefix "")
@@ -143,7 +143,7 @@ Configure automatic tags based on your workspace location:
 ;; Receives path and content, can trigger side effects
 (def post-save (fn (file-path content)
   (if (str-find "@public" content)
-      (let ()
+      (do
         (jnl:exec (str-concat "cp '" file-path "' ~/blog/posts/"))
         (print "● Entry marked as public!"))
       #t)

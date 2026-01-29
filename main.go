@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/crgimenes/filo"
+	"github.com/crgimenes/filo/filoprint"
 	"golang.org/x/term"
 )
 
@@ -240,19 +241,8 @@ func runFiloFile(name string) {
 	// Register string builtins for configuration scripts
 	filo.RegisterStringBuiltins(F.GetEngine())
 
-	// Register print builtin for debugging
-	if err := F.RegisterBuiltin("print", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
-		for i, a := range args {
-			if i > 0 {
-				fmt.Print(" ")
-			}
-			fmt.Print(a.String())
-		}
-		fmt.Println()
-		return filo.VBool(true), nil
-	}); err != nil {
-		log.Fatal(err)
-	}
+	// Register print builtins from filoprint package
+	filoprint.RegisterPrintBuiltins(F.GetEngine())
 
 	// Register jnl:exec builtin for running external commands (interactive)
 	if err := F.RegisterBuiltin("jnl:exec", func(ctx context.Context, args []filo.Value) (filo.Value, error) {

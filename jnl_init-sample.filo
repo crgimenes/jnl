@@ -1,7 +1,7 @@
 ;;; JNL Sample Configuration - Filo Format
 ;;; Copy this file to ~/.config/jnl/init.filo or ./jnl_init.filo
 
-(let ()
+(do
   (print "Filo init loaded")
 
   ;; Journal settings
@@ -42,7 +42,7 @@
         #t)
     
     (if (str-find "@backup" content)
-        (let ()
+        (do
           (print "● Fazendo backup da entrada...")
           (jnl:exec (str-concat "cp '" file-path "' '" file-path ".bak'")))
         #t)
