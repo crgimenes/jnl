@@ -167,14 +167,18 @@ JNL also registers a few helpful builtins for config scripts:
 JNL uses a structured format with metadata headers:
 
 ```markdown
-;;; jnl
+---
 date: 2025-07-06T15:30:00-03:00
 dir: ~/Documents/work/project1
 user: username
 branch: main
-tags: @work, @project1, @main, @secret
+tags:
+  - work
+  - project1
+  - main
+  - secret
 title: Meeting Notes
-;;;
+---
 
 # Project Status Meeting
 

@@ -268,6 +268,32 @@ func runFiloFile(name string) {
 		log.Fatal(err)
 	}
 
+	// Register has-tag builtin for checking tags in journal content.
+	// Usage: (has-tag content "public")
+	// Parses the YAML/legacy header and checks if the tag is present,
+	// handling both bare tags and @-prefixed legacy tags.
+	if err := F.RegisterBuiltin("has-tag", func(ctx context.Context, args []filo.Value) (filo.Value, error) {
+		if len(args) != 2 {
+			return filo.Value{}, fmt.Errorf("has-tag expects 2 arguments (content, tag)")
+		}
+		content, err := args[0].AsString()
+		if err != nil {
+			return filo.Value{}, err
+		}
+		searchTag, err := args[1].AsString()
+		if err != nil {
+			return filo.Value{}, err
+		}
+		header, _ := parseHeader([]byte(content))
+		tags, ok := header["tags"]
+		if !ok {
+			return filo.VBool(false), nil
+		}
+		return filo.VBool(containsTag(tags, searchTag)), nil
+	}); err != nil {
+		log.Fatal(err)
+	}
+
 	F.SetGlobal("JournalPath", journalPath)
 	F.SetGlobal("JournalTitlePrefix", journalTitlePrefix)
 	F.SetGlobal("TagPrefix", tagPrefix)
@@ -891,7 +917,7 @@ func publishCommand(targetPath string) error {
 
 	if publishedCount == 0 {
 		fmt.Printf("\n%s %s %s\n", printWarning("● No entries found with tag"), printHighlight("'"+publishTag+"'"), printWarning("for publishing."))
-		fmt.Printf("%s %s %s\n", printInfo("● To publish an entry, add"), printHighlight("'"+tagPrefix+publishTag+"'"), printInfo("to its tags."))
+		fmt.Printf("%s %s %s\n", printInfo("● To publish an entry, add"), printHighlight("'"+publishTag+"'"), printInfo("to its tags."))
 	}
 
 	return nil
@@ -1072,11 +1098,6 @@ func main() {
 
 		// Sort and deduplicate tags
 		tagArray = sortAndUnique(tagArray)
-
-		// add @ in front of each tag
-		for i := range tagArray {
-			tagArray[i] = tagPrefix + tagArray[i]
-		}
 
 		tags := strings.Join(tagArray, ", ")
 		headerInfo["tags"] = tags

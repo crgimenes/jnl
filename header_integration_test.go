@@ -13,7 +13,7 @@ func TestHeaderIntegration(t *testing.T) {
 		"dir":    "~/Projects/test",
 		"user":   "testuser",
 		"branch": "main",
-		"tags":   "@test, @go, @main",
+		"tags":   "test, go, main",
 		"title":  "Test Entry",
 	}
 
@@ -35,6 +35,65 @@ func TestHeaderIntegration(t *testing.T) {
 	expectedBody := "\n# Test Content\n\nThis is a test entry.\n"
 	if string(body) != expectedBody {
 		t.Errorf("Body mismatch.\nExpected: %q\nGot: %q", expectedBody, string(body))
+	}
+}
+
+func TestHeaderLegacyFormat(t *testing.T) {
+	// Test backward compatibility with legacy ;;; jnl format
+	legacyContent := `;;; jnl
+date: 2025-07-06T15:30:00-03:00
+dir: ~/Projects/test
+user: testuser
+branch: main
+tags: @test, @go, @main
+title: Legacy Entry
+;;;
+
+# Legacy Content
+
+This is a legacy entry.
+`
+
+	expectedInfo := map[string]string{
+		"date":   "2025-07-06T15:30:00-03:00",
+		"dir":    "~/Projects/test",
+		"user":   "testuser",
+		"branch": "main",
+		"tags":   "@test, @go, @main",
+		"title":  "Legacy Entry",
+	}
+
+	parsedInfo, body := parseHeader([]byte(legacyContent))
+
+	if !reflect.DeepEqual(expectedInfo, parsedInfo) {
+		t.Errorf("Legacy header info mismatch.\nExpected: %v\nParsed: %v", expectedInfo, parsedInfo)
+	}
+
+	expectedBody := "\n# Legacy Content\n\nThis is a legacy entry.\n"
+	if string(body) != expectedBody {
+		t.Errorf("Legacy body mismatch.\nExpected: %q\nGot: %q", expectedBody, string(body))
+	}
+}
+
+func TestHeaderYAMLArrayTags(t *testing.T) {
+	// Test parsing YAML frontmatter with tags as an array
+	// (common when edited by Obsidian)
+	yamlContent := "---\ndate: 2025-07-06T15:30:00-03:00\ntitle: Obsidian Entry\ntags:\n  - work\n  - project1\n  - public\n---\n\n# Obsidian Content\n"
+
+	parsedInfo, body := parseHeader([]byte(yamlContent))
+
+	if parsedInfo["title"] != "Obsidian Entry" {
+		t.Errorf("Expected title 'Obsidian Entry', got %q", parsedInfo["title"])
+	}
+
+	expectedTags := "work, project1, public"
+	if parsedInfo["tags"] != expectedTags {
+		t.Errorf("Expected tags %q, got %q", expectedTags, parsedInfo["tags"])
+	}
+
+	expectedBody := "\n# Obsidian Content\n"
+	if string(body) != expectedBody {
+		t.Errorf("YAML body mismatch.\nExpected: %q\nGot: %q", expectedBody, string(body))
 	}
 }
 

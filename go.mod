@@ -4,6 +4,8 @@ go 1.26
 
 require golang.org/x/term v0.40.0
 
+require github.com/goccy/go-yaml v1.19.2
+
 require (
 	github.com/crgimenes/filo v0.0.6
 	golang.org/x/sys v0.41.0 // indirect

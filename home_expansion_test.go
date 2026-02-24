@@ -71,11 +71,13 @@ func TestPublishCommandHomeExpansion(t *testing.T) {
 	blockedTags = []string{"secret"}
 
 	// Create a test file with public tag
-	testContent := `;;; jnl
+	testContent := `---
 date: 2025-07-05T10:56:44-03:00
 title: Test Article
-tags: @test, @public
-;;;
+tags:
+  - test
+  - public
+---
 
 # Test Content`
 

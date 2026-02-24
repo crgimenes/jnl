@@ -11,7 +11,7 @@ func Example_parseHeader() {
 		"date":   time.Now().Format(time.RFC3339),
 		"dir":    "~/Projects/foo",
 		"branch": "feature-x",
-		"tags":   "@work, @diary",
+		"tags":   "work, diary",
 	}
 
 	// Build the header and create a Markdown entry.

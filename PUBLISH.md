@@ -44,12 +44,15 @@ The system has built-in protections against accidental publication of sensitive 
 ### Journal Entry
 
 ```markdown
-;;; jnl
+---
 date: 2025-07-05T10:56:44-03:00
 title: How to Optimize Websites
-tags: @development, @public, @web
+tags:
+  - development
+  - public
+  - web
 user: username
-;;;
+---
 
 # How to Optimize Websites
 
@@ -87,11 +90,14 @@ This article explains optimization techniques...
 ## Example of Blocked Entry
 
 ```markdown
-;;; jnl
+---
 date: 2025-07-05T10:56:44-03:00
 title: Confidential Meeting
-tags: @company, @public, @secret
-;;;
+tags:
+  - company
+  - public
+  - secret
+---
 
 We discussed confidential strategies...
 ```
