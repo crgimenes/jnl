@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestContainsTag(t *testing.T) {
@@ -586,4 +587,43 @@ func TestBlockedTagsSecurity(t *testing.T) {
 	if _, err := os.Stat(cleanTarget); os.IsNotExist(err) {
 		t.Error("Clean public entry file was not created in target dir")
 	}
+}
+
+func TestBuildHugoFrontmatterUTF8Description(t *testing.T) {
+	// A long Portuguese text with multi-byte chars that, when truncated
+	// at byte boundaries, would produce invalid UTF-8.
+	longBody := "Recordando o passado com emoção, lembranças e saudade. " +
+		"As memórias são como estrelas no céu: distantes, mas sempre presentes. " +
+		"Não há como esquecer os momentos que vivemos juntos naquele verão."
+
+	header := map[string]string{
+		"date":  "2026-03-02T07:51:50-03:00",
+		"title": "Recordando o passado",
+		"tags":  "public",
+	}
+
+	result := buildHugoFrontmatter(header, []byte(longBody))
+
+	// Extract the description value from the TOML output
+	for line := range strings.SplitSeq(result, "\n") {
+		if !strings.HasPrefix(line, "description = ") {
+			continue
+		}
+		// The entire line must be valid UTF-8
+		if !utf8.ValidString(line) {
+			t.Errorf("description line contains invalid UTF-8: %q", line)
+		}
+		// Extract value between quotes
+		start := strings.Index(line, "\"") + 1
+		end := strings.LastIndex(line, "\"")
+		desc := line[start:end]
+		if !utf8.ValidString(desc) {
+			t.Errorf("description value contains invalid UTF-8: %q", desc)
+		}
+		if len([]rune(desc)) > 150 {
+			t.Errorf("description too long: %d runes", len([]rune(desc)))
+		}
+		return
+	}
+	t.Error("description field not found in frontmatter output")
 }

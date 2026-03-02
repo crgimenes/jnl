@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/crgimenes/filo"
 	"github.com/crgimenes/filo/filoprint"
@@ -758,8 +759,9 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 				break
 			}
 		}
-		if len(description) > 150 {
-			description = description[:147] + "..."
+		if utf8.RuneCountInString(description) > 150 {
+			runes := []rune(description)
+			description = string(runes[:147]) + "..."
 		}
 		if description != "" {
 			b.WriteString(fmt.Sprintf("description = \"%s\"\n", strings.ReplaceAll(description, "\"", "\\\"")))
