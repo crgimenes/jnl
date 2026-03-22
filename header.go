@@ -113,7 +113,7 @@ func parseHeader(md []byte) (map[string]string, []byte) {
 	switch {
 	case firstLine == "---":
 		return parseYAMLHeader(sc, &body)
-	case strings.HasPrefix(firstLine, ";;; jnl"):
+	case strings.HasPrefix(firstLine, ";;;"):
 		return parseLegacyHeader(sc, &body)
 	default:
 		// No header found; the first line is part of the body.
