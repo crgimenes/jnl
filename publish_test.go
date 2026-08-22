@@ -182,11 +182,8 @@ func TestBuildHugoFrontmatterFromYAML(t *testing.T) {
 // TestPublishEntryHugoContent verifies that a published file contains
 // correct Hugo TOML frontmatter with properly formatted tags.
 func TestPublishEntryHugoContent(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "hugo-content-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
+	var err error
 
 	sourceDir := filepath.Join(tempDir, "source")
 	targetDir := filepath.Join(tempDir, "target")
@@ -255,11 +252,8 @@ This is a tutorial about Go.
 
 func TestPublishEntry(t *testing.T) {
 	// Create temporary directories
-	tempDir, err := os.MkdirTemp("", "publish-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
+	var err error
 
 	sourceDir := filepath.Join(tempDir, "source")
 	targetDir := filepath.Join(tempDir, "target")
@@ -374,11 +368,8 @@ This has both public and secret tags.`
 
 func TestPublishCommand(t *testing.T) {
 	// Create temporary directories
-	tempDir, err := os.MkdirTemp("", "publish-cmd-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
+	var err error
 
 	sourceDir := filepath.Join(tempDir, "journal")
 	targetDir := filepath.Join(tempDir, "hugo")
@@ -496,11 +487,7 @@ tags:
 // YAML comma-string, legacy ;;; with @-prefix) against all configured
 // blocked tags, ensuring none of them slip through to publication.
 func TestBlockedTagsSecurity(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "blocked-tags-security-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	sourceDir := filepath.Join(tempDir, "source")
 	targetDir := filepath.Join(tempDir, "target")

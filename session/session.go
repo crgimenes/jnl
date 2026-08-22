@@ -57,7 +57,10 @@ func (c *Control) Get(r *http.Request) (string, *SessionData, bool) {
 
 func (c *Control) Delete(w http.ResponseWriter, id string) {
 	delete(c.SessionDataMap, id)
-	cookie := http.Cookie{
+	// Path has to match the cookie Save set, or the browser keeps the one at
+	// "/" and the session survives the delete.
+	cookie := http.Cookie{ // #nosec G124 -- deletion cookie: the value is empty
+		Path:   "/",
 		Name:   c.cookieName,
 		Value:  "",
 		MaxAge: -1,
@@ -75,7 +78,7 @@ func (c *Control) Save(w http.ResponseWriter, r *http.Request, id string, sessio
 		secure = false
 	}
 
-	cookie := &http.Cookie{
+	cookie := &http.Cookie{ // #nosec G124 -- Secure is relaxed only on localhost (http dev)
 		Path:     "/",
 		Name:     c.cookieName,
 		Value:    id,

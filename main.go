@@ -18,7 +18,6 @@ import (
 	"github.com/crgimenes/filo"
 	"github.com/crgimenes/filo/filoprint"
 	"github.com/crgimenes/filo/filostrings"
-	"golang.org/x/term"
 )
 
 // Color constants for terminal output
@@ -45,7 +44,6 @@ const (
 var (
 	GitTag             = "v0.0.0"
 	force              = false // depends on the command
-	isTTY              = term.IsTerminal(int(os.Stdout.Fd()))
 	journalPath        = "./"
 	journalTitle       = "" // optional title for the journal entry (first line if set)
 	journalTitlePrefix = ""
@@ -117,6 +115,8 @@ func postSave(filePath string, content []byte) {
 }
 
 func fileExists(name string) bool {
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	_, err := os.Stat(name)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -255,6 +255,8 @@ func runFiloFile(name string) {
 		if err != nil {
 			return filo.Value{}, err
 		}
+		// #nosec G204,G702 -- the command is the user's own $EDITOR or a hook from
+		// their init.filo; running it is the point of the feature.
 		cmd := exec.Command("sh", "-c", cmdStr)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -540,6 +542,8 @@ func editJournalEntry(filename string) error {
 	}
 
 	// Read existing content
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	content, err := os.ReadFile(journalFile)
 	if err != nil {
 		return fmt.Errorf("failed to read journal entry: %v", err)
@@ -562,7 +566,7 @@ func editJournalEntry(filename string) error {
 		if err := tmpFile.Close(); err != nil {
 			log.Printf("Error closing temporary file: %v", err)
 		}
-		os.Remove(tmpFile.Name())
+		_ = os.Remove(tmpFile.Name())
 	}()
 
 	// Write current content to temp file
@@ -579,6 +583,8 @@ func editJournalEntry(filename string) error {
 			return fmt.Errorf("filo exec error: %v", err)
 		}
 	} else {
+		// #nosec G204,G702 -- the command is the user's own $EDITOR or a hook from
+		// their init.filo; running it is the point of the feature.
 		cmd := exec.Command(editor, tmpFile.Name())
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
@@ -605,6 +611,8 @@ func editJournalEntry(filename string) error {
 	}
 
 	// Save the updated content
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	err = os.WriteFile(journalFile, editedContent, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to save journal entry: %v", err)
@@ -632,6 +640,8 @@ func catJournalEntry(filename string) error {
 	}
 
 	// Read and display content
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	content, err := os.ReadFile(journalFile)
 	if err != nil {
 		return fmt.Errorf("failed to read journal entry: %v", err)
@@ -655,6 +665,8 @@ func showJournalEntry(filename string) error {
 	}
 
 	// Read content
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	content, err := os.ReadFile(journalFile)
 	if err != nil {
 		return fmt.Errorf("failed to read journal entry: %v", err)
@@ -720,15 +732,15 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 
 	// Required Hugo fields
 	if date, exists := header["date"]; exists {
-		b.WriteString(fmt.Sprintf("date = \"%s\"\n", formatHugoDate(date)))
+		fmt.Fprintf(&b, "date = \"%s\"\n", formatHugoDate(date))
 		// Set lastmod to the same date if not specified
-		b.WriteString(fmt.Sprintf("lastmod = \"%s\"\n", formatHugoDate(date)))
+		fmt.Fprintf(&b, "lastmod = \"%s\"\n", formatHugoDate(date))
 	}
 
 	// Title from header or extract from body
 	title, hasTitle := header["title"]
 	if hasTitle && title != "" {
-		b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(title, "\"", "\\\"")))
+		fmt.Fprintf(&b, "title = \"%s\"\n", strings.ReplaceAll(title, "\"", "\\\""))
 	}
 	if !hasTitle || title == "" {
 		// Extract title from first line of body
@@ -739,7 +751,7 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 				// Remove markdown headers
 				lineStr = strings.TrimSpace(strings.TrimLeft(lineStr, "#"))
 				if lineStr != "" {
-					b.WriteString(fmt.Sprintf("title = \"%s\"\n", strings.ReplaceAll(lineStr, "\"", "\\\"")))
+					fmt.Fprintf(&b, "title = \"%s\"\n", strings.ReplaceAll(lineStr, "\"", "\\\""))
 					break
 				}
 			}
@@ -764,7 +776,7 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 			description = string(runes[:147]) + "..."
 		}
 		if description != "" {
-			b.WriteString(fmt.Sprintf("description = \"%s\"\n", strings.ReplaceAll(description, "\"", "\\\"")))
+			fmt.Fprintf(&b, "description = \"%s\"\n", strings.ReplaceAll(description, "\"", "\\\""))
 		}
 	}
 
@@ -786,7 +798,7 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.WriteString(fmt.Sprintf("\"%s\"", strings.ReplaceAll(tag, "\"", "\\\"")))
+				fmt.Fprintf(&b, "\"%s\"", strings.ReplaceAll(tag, "\"", "\\\""))
 			}
 			b.WriteString("]\n")
 		}
@@ -799,6 +811,8 @@ func buildHugoFrontmatter(header map[string]string, body []byte) string {
 // publishEntry converts a journal entry to Hugo format and saves it
 func publishEntry(sourceFile, targetDir string) error {
 	// Read the journal entry
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
 	content, err := os.ReadFile(sourceFile)
 	if err != nil {
 		return fmt.Errorf("failed to read source file %s: %v", sourceFile, err)
@@ -827,11 +841,15 @@ func publishEntry(sourceFile, targetDir string) error {
 	targetFile := filepath.Join(targetDir, sourceFilename)
 
 	// Ensure target directory exists
+	// #nosec G301,G306 -- the Hugo content tree is meant to be read by the site
+	// build and served; the journal itself stays 0600.
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target directory %s: %v", targetDir, err)
 	}
 
 	// Write the Hugo-formatted file
+	// #nosec G301,G306 -- the Hugo content tree is meant to be read by the site
+	// build and served; the journal itself stays 0600.
 	err = os.WriteFile(targetFile, []byte(hugoContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write target file %s: %v", targetFile, err)
@@ -974,12 +992,199 @@ func sortAndUnique(input []string) []string {
 	return input[:j+1]
 }
 
-func main() {
-	log.SetFlags(log.LstdFlags | log.Llongfile)
+// runAdd is the default command: parse its flags, compose the entry, save
+// it, and run the post-save hooks. It was the body of the "add" case, long
+// enough that main read as one 340-line function.
+func runAdd() {
+	// parse arguments
+	// --commit (run `exec.Command("git", "commit", "-F", journalFile).Run()` after saving)
+	runCommitAfterSave := false
+	if len(os.Args) > 1 {
+		for i := 1; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--commit" || arg == "-c" {
+				runCommitAfterSave = true
+				continue
+			}
+		}
+	}
 
-	createConfigDir()
-	initFile := getInitFiloPath()
+	// open $EDITOR with a temporary file and use the file as the content
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	tmpFile, err := os.CreateTemp("", "jnl-*.md")
+	if err != nil {
+		log.Fatal("Failed to create temporary file:", err)
+	}
 
+	defer func() {
+		if err := tmpFile.Close(); err != nil {
+			log.Printf("Failed to close temporary file: %v", err)
+		}
+		if err := os.Remove(tmpFile.Name()); err != nil {
+			log.Printf("Failed to remove temporary file: %v", err)
+		}
+	}()
+
+	// Build header info
+	headerInfo := make(map[string]string)
+
+	// Add date
+	headerInfo["date"] = time.Now().Format(time.RFC3339)
+
+	// get current directory info
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Fatal("Failed to get current directory:", err)
+	}
+	wd, err = filepath.Abs(wd)
+	if err != nil {
+		log.Fatal("Failed to get absolute path:", err)
+	}
+	// remove home directory from path
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("Failed to get home directory:", err)
+	}
+	wd = strings.Replace(wd, home, "", 1)
+	wd = strings.TrimPrefix(wd, "/")
+	tagArray := strings.Split(wd, "/")
+
+	beautifiedPath := "~/" + strings.TrimPrefix(wd, "/")
+	headerInfo["dir"] = beautifiedPath
+
+	// Add user
+	userName := os.Getenv("USER")
+	if userName == "" {
+		userName = os.Getenv("USERNAME")
+	}
+	if userName != "" {
+		headerInfo["user"] = userName
+	}
+
+	// get git branch name
+	gitBranch, ok := getGitBranch()
+	if ok {
+		headerInfo["branch"] = gitBranch
+		tagArray = append(tagArray, gitBranch)
+	}
+
+	// Add directory-specific tags
+	directorySpecificTags := getDirectoryTags(wd)
+	tagArray = append(tagArray, directorySpecificTags...)
+
+	// Sort and deduplicate tags
+	tagArray = sortAndUnique(tagArray)
+
+	tags := strings.Join(tagArray, ", ")
+	headerInfo["tags"] = tags
+
+	// Add title if provided
+	if journalTitle != "" {
+		headerInfo["title"] = journalTitle
+	}
+
+	// Build the header using the new function
+	s := buildHeader(headerInfo)
+	s = preProc(s)
+
+	prevContent := s
+
+	// write the content to the temporary file
+	_, err = tmpFile.WriteString(s)
+	if err != nil {
+		log.Fatal("Failed to write to temporary file:", err)
+	}
+
+	/*
+		// open the file with the editor using exec.Command
+		cmd := exec.Command(editor, tmpFile.Name())
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err = cmd.Run()
+		if err != nil {
+			log.Fatal("Failed to run editor:", err)
+		}
+	*/
+
+	// Try to use exec function from config, fallback to system
+	if F.HasFunction("exec") {
+		_, err := F.CallFunction("exec", editor, tmpFile.Name())
+		if err != nil {
+			log.Fatalf("filo exec error: %v", err)
+		}
+	} else {
+		// fallback: call the binary directly
+		// #nosec G204,G702 -- the command is the user's own $EDITOR or a hook from
+		// their init.filo; running it is the point of the feature.
+		cmd := exec.Command(editor, tmpFile.Name())
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err := cmd.Run()
+		if err != nil {
+			log.Fatal("Failed to run editor:", err)
+		}
+	}
+
+	// read the content of the file
+	content, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		log.Fatal("Failed to read temporary file:", err)
+	}
+
+	content = []byte(postProc(string(content)))
+
+	// check if the content is empty
+	if len(content) == 0 {
+		fmt.Println(printWarning("● Empty file, not saving."))
+		return
+	}
+
+	if bytes.Equal(content, []byte(prevContent)) &&
+		journalTitle == "" && !force {
+		fmt.Println(printWarning("● No changes detected, use --force to save."))
+		return
+	}
+
+	// save the content to the journal path
+	journalFile := filepath.Join(journalPath, journalFilename(content))
+
+	// #nosec G304,G703 -- the journal path comes from the user's own flag or
+	// init.filo; jnl is a single-user CLI over files that user already owns.
+	err = os.WriteFile(journalFile, content, 0600)
+	if err != nil {
+		log.Fatal("Failed to write journal file:", err)
+	}
+
+	fmt.Println(printSuccess("● Journal entry saved to:"), printHighlight(journalFile))
+
+	// Call PostSave hook if it exists
+	postSave(journalFile, content)
+	if runCommitAfterSave {
+		fmt.Println(printInfo("● git commit..."))
+		// #nosec G204 -- fixed argv0; journalFile is the entry jnl just wrote.
+		cmd := exec.Command("git", "commit", "-F", journalFile)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Env = os.Environ()
+		err = cmd.Run()
+		if err != nil {
+			log.Fatalf("Failed to run `git commit -F %s`: %v\n", journalFile, err)
+		}
+	}
+
+}
+
+// parseGlobalOptions walks argv for the options that apply to every command
+// and returns the command name, which defaults to "add".
+func parseGlobalOptions() string {
 	cmd := "add"
 	// parse global options
 	if len(os.Args) > 1 {
@@ -1006,6 +1211,16 @@ func main() {
 			break
 		}
 	}
+	return cmd
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Llongfile)
+
+	createConfigDir()
+	initFile := getInitFiloPath()
+
+	cmd := parseGlobalOptions()
 
 	if fileExists("./jnl_init.filo") {
 		initFile = "./jnl_init.filo"
@@ -1019,185 +1234,7 @@ func main() {
 
 	switch cmd {
 	case "add":
-		// parse arguments
-		// --commit (run `exec.Command("git", "commit", "-F", journalFile).Run()` after saving)
-		runCommitAfterSave := false
-		if len(os.Args) > 1 {
-			for i := 1; i < len(os.Args); i++ {
-				arg := os.Args[i]
-				if arg == "--commit" || arg == "-c" {
-					runCommitAfterSave = true
-					continue
-				}
-			}
-		}
-
-		// open $EDITOR with a temporary file and use the file as the content
-		editor := os.Getenv("EDITOR")
-		if editor == "" {
-			editor = "vi"
-		}
-		tmpFile, err := os.CreateTemp("", "jnl-*.md")
-		if err != nil {
-			log.Fatal("Failed to create temporary file:", err)
-		}
-
-		defer func() {
-			if err := tmpFile.Close(); err != nil {
-				log.Printf("Failed to close temporary file: %v", err)
-			}
-			if err := os.Remove(tmpFile.Name()); err != nil {
-				log.Printf("Failed to remove temporary file: %v", err)
-			}
-		}()
-
-		// Build header info
-		headerInfo := make(map[string]string)
-
-		// Add date
-		headerInfo["date"] = time.Now().Format(time.RFC3339)
-
-		// get current directory info
-		wd, err := os.Getwd()
-		if err != nil {
-			log.Fatal("Failed to get current directory:", err)
-		}
-		wd, err = filepath.Abs(wd)
-		if err != nil {
-			log.Fatal("Failed to get absolute path:", err)
-		}
-		// remove home directory from path
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal("Failed to get home directory:", err)
-		}
-		wd = strings.Replace(wd, home, "", 1)
-		wd = strings.TrimPrefix(wd, "/")
-		tagArray := strings.Split(wd, "/")
-
-		beautifiedPath := "~/" + strings.TrimPrefix(wd, "/")
-		headerInfo["dir"] = beautifiedPath
-
-		// Add user
-		userName := os.Getenv("USER")
-		if userName == "" {
-			userName = os.Getenv("USERNAME")
-		}
-		if userName != "" {
-			headerInfo["user"] = userName
-		}
-
-		// get git branch name
-		gitBranch, ok := getGitBranch()
-		if ok {
-			headerInfo["branch"] = gitBranch
-			tagArray = append(tagArray, gitBranch)
-		}
-
-		// Add directory-specific tags
-		directorySpecificTags := getDirectoryTags(wd)
-		tagArray = append(tagArray, directorySpecificTags...)
-
-		// Sort and deduplicate tags
-		tagArray = sortAndUnique(tagArray)
-
-		tags := strings.Join(tagArray, ", ")
-		headerInfo["tags"] = tags
-
-		// Add title if provided
-		if journalTitle != "" {
-			headerInfo["title"] = journalTitle
-		}
-
-		// Build the header using the new function
-		s := buildHeader(headerInfo)
-		s = preProc(s)
-
-		prevContent := s
-
-		// write the content to the temporary file
-		_, err = tmpFile.WriteString(s)
-		if err != nil {
-			log.Fatal("Failed to write to temporary file:", err)
-		}
-
-		/*
-			// open the file with the editor using exec.Command
-			cmd := exec.Command(editor, tmpFile.Name())
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Env = os.Environ()
-			err = cmd.Run()
-			if err != nil {
-				log.Fatal("Failed to run editor:", err)
-			}
-		*/
-
-		// Try to use exec function from config, fallback to system
-		if F.HasFunction("exec") {
-			_, err := F.CallFunction("exec", editor, tmpFile.Name())
-			if err != nil {
-				log.Fatalf("filo exec error: %v", err)
-			}
-		} else {
-			// fallback: call the binary directly
-			cmd := exec.Command(editor, tmpFile.Name())
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Env = os.Environ()
-			err := cmd.Run()
-			if err != nil {
-				log.Fatal("Failed to run editor:", err)
-			}
-		}
-
-		// read the content of the file
-		content, err := os.ReadFile(tmpFile.Name())
-		if err != nil {
-			log.Fatal("Failed to read temporary file:", err)
-		}
-
-		content = []byte(postProc(string(content)))
-
-		// check if the content is empty
-		if len(content) == 0 {
-			fmt.Println(printWarning("● Empty file, not saving."))
-			return
-		}
-
-		if bytes.Equal(content, []byte(prevContent)) &&
-			journalTitle == "" && !force {
-			fmt.Println(printWarning("● No changes detected, use --force to save."))
-			return
-		}
-
-		// save the content to the journal path
-		journalFile := filepath.Join(journalPath, journalFilename(content))
-
-		err = os.WriteFile(journalFile, content, 0600)
-		if err != nil {
-			log.Fatal("Failed to write journal file:", err)
-		}
-
-		fmt.Println(printSuccess("● Journal entry saved to:"), printHighlight(journalFile))
-
-		// Call PostSave hook if it exists
-		postSave(journalFile, content)
-		if runCommitAfterSave {
-			fmt.Println(printInfo("● git commit..."))
-			cmd := exec.Command("git", "commit", "-F", journalFile)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Env = os.Environ()
-			err = cmd.Run()
-			if err != nil {
-				log.Fatalf("Failed to run `git commit -F %s`: %v\n", journalFile, err)
-			}
-		}
-
+		runAdd()
 		return
 
 	case "ls":

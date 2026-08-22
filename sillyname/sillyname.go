@@ -77,10 +77,13 @@ func Load() []string {
 }
 
 // Generate a silly name
+// Generate builds a display nickname for an anonymous visitor. #nosec G404 --
+// math/rand is right here: this is a label people read, not a secret. Session
+// ids come from RandomID, which uses crypto/rand.
 func Generate() string {
 	ln := len(Names)
-	n1 := Names[rand.Intn(ln)]
-	n2 := Names[rand.Intn(ln)]
-	n3 := Names[rand.Intn(ln)]
+	n1 := Names[rand.Intn(ln)] // #nosec G404 -- see the note above
+	n2 := Names[rand.Intn(ln)] // #nosec G404 -- see the note above
+	n3 := Names[rand.Intn(ln)] // #nosec G404 -- see the note above
 	return fmt.Sprintf("%s.%s.%s", n1, n2, n3)
 }

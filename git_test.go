@@ -7,12 +7,10 @@ import (
 )
 
 func TestIsInGitRepository(t *testing.T) {
-	// Create a temporary directory structure for testing
-	tempDir, err := os.MkdirTemp("", "git-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	// t.TempDir cleans itself up, and t.Chdir restores the working directory
+	// when the test ends -- no bookkeeping to get wrong.
+	tempDir := t.TempDir()
+	var err error
 
 	// Test case 1: Directory without .git
 	subDir1 := filepath.Join(tempDir, "no-git")
@@ -22,10 +20,7 @@ func TestIsInGitRepository(t *testing.T) {
 	}
 
 	// Change to the directory without .git
-	originalDir, _ := os.Getwd()
-	defer os.Chdir(originalDir)
-
-	os.Chdir(subDir1)
+	t.Chdir(subDir1)
 	if isInGitRepository() {
 		t.Error("Should not detect git repository in directory without .git")
 	}
@@ -43,7 +38,7 @@ func TestIsInGitRepository(t *testing.T) {
 		t.Fatalf("Failed to create .git dir: %v", err)
 	}
 
-	os.Chdir(subDir2)
+	t.Chdir(subDir2)
 	if !isInGitRepository() {
 		t.Error("Should detect git repository in directory with .git folder")
 	}
@@ -55,7 +50,7 @@ func TestIsInGitRepository(t *testing.T) {
 		t.Fatalf("Failed to create nested dir: %v", err)
 	}
 
-	os.Chdir(nestedDir)
+	t.Chdir(nestedDir)
 	if !isInGitRepository() {
 		t.Error("Should detect git repository in nested directory within git repo")
 	}
@@ -73,32 +68,29 @@ func TestIsInGitRepository(t *testing.T) {
 		t.Fatalf("Failed to create .git file: %v", err)
 	}
 
-	os.Chdir(subDir3)
+	t.Chdir(subDir3)
 	if !isInGitRepository() {
 		t.Error("Should detect git repository when .git is a file (worktree)")
 	}
 }
 
 func TestGetGitBranch(t *testing.T) {
-	// This test will work in the actual project directory
-	originalDir, _ := os.Getwd()
-	defer os.Chdir(originalDir)
-
-	// Test in a non-git directory
-	tempDir, err := os.MkdirTemp("", "non-git-test-*")
+	// The second half of the test runs back in the project directory, so the
+	// path has to be captured before leaving it. t.Chdir handles the restore.
+	originalDir, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("Failed to get working directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
-	os.Chdir(tempDir)
+	t.Chdir(tempDir)
 	branch, ok := getGitBranch()
 	if ok {
 		t.Errorf("Should not get git branch in non-git directory, got: %s", branch)
 	}
 
 	// Test in the actual project directory (assuming this is a git repo)
-	os.Chdir(originalDir)
+	t.Chdir(originalDir)
 	if !isInGitRepository() {
 		t.Skip("Not in a git repository, skipping git branch test")
 	}

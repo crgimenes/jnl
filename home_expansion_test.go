@@ -43,11 +43,8 @@ func TestHomeDirectoryExpansion(t *testing.T) {
 
 func TestPublishCommandHomeExpansion(t *testing.T) {
 	// Create temporary directories
-	tempDir, err := os.MkdirTemp("", "publish-home-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
+	var err error
 
 	sourceDir := filepath.Join(tempDir, "journal")
 	err = os.MkdirAll(sourceDir, 0755)
@@ -95,7 +92,7 @@ tags:
 
 	relativeTargetDir := "temp-publish-test"
 	absoluteTargetDir := filepath.Join(home, relativeTargetDir)
-	defer os.RemoveAll(absoluteTargetDir)
+	defer func() { _ = os.RemoveAll(absoluteTargetDir) }()
 
 	// Test publishCommand with ~/path
 	tildeTargetPath := "~/" + relativeTargetDir

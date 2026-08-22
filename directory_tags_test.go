@@ -144,11 +144,8 @@ func TestDirectoryTagsWithRelativePaths(t *testing.T) {
 	defer func() { directoryTags = originalDirectoryTags }()
 
 	// Create a temporary directory structure for testing
-	tempDir, err := os.MkdirTemp("", "directory-tags-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
+	var err error
 
 	testWorkDir := filepath.Join(tempDir, "work")
 	testProjectDir := filepath.Join(testWorkDir, "project")
@@ -202,11 +199,7 @@ func TestDirectoryTagsBlockPublish(t *testing.T) {
 	publishTag = "public"
 	blockedTags = []string{"secret", "private", "confidential"}
 
-	tempDir, err := os.MkdirTemp("", "dir-tags-publish-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	workDir := filepath.Join(tempDir, "work", "client-acme")
 	if err := os.MkdirAll(workDir, 0755); err != nil {
@@ -263,7 +256,7 @@ func TestDirectoryTagsBlockPublish(t *testing.T) {
 	}
 
 	// 7. Attempt to publish — must be BLOCKED by "secret" tag
-	err = publishEntry(entryFile, targetDir)
+	err := publishEntry(entryFile, targetDir)
 	if err == nil {
 		t.Fatal("SECURITY: entry with directory-assigned 'secret' tag was published!")
 	}
