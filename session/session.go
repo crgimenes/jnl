@@ -3,7 +3,6 @@ package session
 import (
 	"crypto/rand"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/crgimenes/jnl/sillyname"
@@ -71,14 +70,13 @@ func (c *Control) Delete(w http.ResponseWriter, id string) {
 func (c *Control) Save(w http.ResponseWriter, r *http.Request, id string, sessionData *SessionData) {
 	expireAt := time.Now().Add(3 * time.Hour)
 
-	// if localhost accept all cookies (secure=false)
-	var secure = true
-	lhost, _, _ := strings.Cut(r.Host, ":")
-	if lhost == "localhost" {
-		secure = false
-	}
+	// A Secure cookie is silently discarded by browsers on a plain-http
+	// origin, leaving every following request unauthenticated. Mark it Secure
+	// only when the request actually arrived over TLS, directly or via a
+	// reverse proxy.
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 
-	cookie := &http.Cookie{ // #nosec G124 -- Secure is relaxed only on localhost (http dev)
+	cookie := &http.Cookie{ // #nosec G124 -- Secure follows the transport; plain http on a private network is a supported deployment
 		Path:     "/",
 		Name:     c.cookieName,
 		Value:    id,
