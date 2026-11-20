@@ -23,7 +23,7 @@ go.work.sum
 
 # env file
 .env
-jnl
+/jnl
 jnl-linux-amd64
 *.lua
 draft

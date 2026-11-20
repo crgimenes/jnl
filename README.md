@@ -22,7 +22,7 @@ A powerful command-line journal tool that helps you create, organize, and publis
 ```bash
 git clone https://github.com/crgimenes/jnl.git
 cd jnl
-go build -o jnl .
+go build -o jnl ./cmd/jnl
 ```
 
 ### Requirements
